@@ -1,4 +1,4 @@
-// Jest setup file for LinkedIn extension tests
+// Jest setup file for Page Monitor to n8n extension tests
 
 // Add TextEncoder/TextDecoder polyfills for JSDOM
 const { TextEncoder, TextDecoder } = require('util');
@@ -13,6 +13,12 @@ global.chrome = {
     },
     sendMessage: jest.fn(),
     lastError: null
+  },
+  storage: {
+    local: {
+      get: jest.fn(() => Promise.resolve({})),
+      set: jest.fn(() => Promise.resolve())
+    }
   }
 };
 
@@ -22,4 +28,4 @@ global.console = {
   log: jest.fn(console.log),
   warn: jest.fn(console.warn),
   error: jest.fn(console.error)
-}; 
+};

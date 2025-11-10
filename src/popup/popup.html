@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Page Monitor to n8n</title>
+  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <div class="branding">
+        <i class="fas fa-eye"></i>
+        <span class="app-name">Page Monitor</span>
+      </div>
+      <div class="header-actions">
+        <a class="monitor-icon" href="#" title="Monitor Page">
+          <i class="fas fa-eye"></i>
+        </a>
+        <a class="settings-icon" href="#" title="Settings">
+          <i class="fas fa-cog"></i>
+        </a>
+      </div>
+      <div class="subtitle">Monitor pages and send to n8n</div>
+    </div>
+    <div class="form-group">
+      <div class="quick-actions">
+        <button class="btn btn-primary" id="monitorBtn">
+          <i class="fas fa-eye"></i>
+          Monitor Page
+        </button>
+        <button class="btn btn-secondary" id="settingsBtn">
+          <i class="fas fa-cog"></i>
+          Settings
+        </button>
+      </div>
+      <div class="info-text">
+        <p>Click "Monitor Page" to set up automatic monitoring of the current page and send content changes to your n8n webhook.</p>
+      </div>
+    </div>
+    <div class="footer">
+      Made with ❤️ for better n8n workflows by Karel Chwistek
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+

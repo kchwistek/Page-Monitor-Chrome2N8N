@@ -154,14 +154,21 @@ async function hasContentChanged(tabId, currentContent) {
  */
 async function sendContentToWebhook(tabId, content, url, selector, changeDetected) {
   try {
-    const { webhookUrl } = await chrome.storage.local.get('webhookUrl');
+    // Get tab-specific webhook URL from config, fallback to global webhook
+    const config = await getMonitoringConfig(tabId);
+    let webhookUrl = config?.webhookUrl;
+    
+    // If no tab-specific webhook, use global webhook
+    if (!webhookUrl) {
+      const storage = await chrome.storage.local.get('webhookUrl');
+      webhookUrl = storage.webhookUrl;
+    }
 
     if (!webhookUrl || webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
       console.error('No webhook URL configured');
-      return { success: false, message: 'No webhook URL set. Please configure it in extension options.' };
+      return { success: false, message: 'No webhook URL set. Please configure it in the monitoring settings or extension options.' };
     }
 
-    const config = await getMonitoringConfig(tabId);
     const payload = {
       type: 'page_monitor',
       timestamp: new Date().toISOString(),
@@ -171,7 +178,8 @@ async function sendContentToWebhook(tabId, content, url, selector, changeDetecte
       changeDetected: changeDetected,
       metadata: {
         refreshInterval: config?.refreshInterval || 30000,
-        tabId: tabId
+        tabId: tabId,
+        webhookUrl: webhookUrl // Include which webhook was used
       }
     };
 

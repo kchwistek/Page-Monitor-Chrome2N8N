@@ -8,10 +8,15 @@ A powerful Chrome extension that monitors web pages and sends content changes to
 
 ### 🎯 Page Monitoring
 - **Monitor any website** - Works on any web page
-- **Automatic refresh** - Configurable refresh intervals
+- **Multiple tabs support** - Monitor multiple tabs simultaneously with different configurations
+- **Automatic refresh** - Configurable refresh intervals (minimum: 5 seconds)
 - **Change detection** - Only sends content when it changes (optional)
 - **Flexible content extraction** - Extract HTML or text from any CSS selector
 - **Smart content hashing** - Uses SHA-256 to detect changes efficiently
+- **Content validation** - Automatically waits for page content to fully load before sending
+- **Per-tab webhooks** - Each monitored tab can send to a different webhook URL
+- **Monitoring profiles** - Save and reuse monitoring configurations
+- **Visual indicators** - Icon badge shows monitoring state of the active tab
 
 ---
 
@@ -33,12 +38,28 @@ A powerful Chrome extension that monitors web pages and sends content changes to
 
 ## ⚙️ Configuration
 
-1. **Click the Extension icon → Settings (or right-click → Options)**
+### Global Settings
+
+1. **Click the Extension icon → Settings icon (⚙️)**
 2. **Paste your n8n Webhook URL**
    - Example: `https://your-n8n-instance.com/webhook/page-monitor`
+   - This is used as the default webhook for all tabs
 3. (Optional) Set default monitoring settings (refresh interval, change detection)
 4. (Optional) Click "Save" and "Send Test" to check connectivity
 5. Done!
+
+### Per-Tab Configuration
+
+Each tab can have its own monitoring configuration:
+
+1. **Select a tab** from the dropdown
+2. **Configure monitoring settings**:
+   - CSS selector for the content to monitor
+   - Refresh interval (how often to check)
+   - Content type (HTML or text)
+   - Webhook URL (optional - leave empty to use global webhook)
+   - Change detection (send only when content changes)
+3. **Start monitoring** or save as a profile for later use
 
 No need to modify files or environment variables.
 
@@ -48,24 +69,63 @@ No need to modify files or environment variables.
 
 ### Setting Up Page Monitoring
 
-1. **Navigate to the page you want to monitor**
-   - Any website works!
+1. **Click the Extension Icon**
+   - The popup will open with all monitoring controls
 
-2. **Open the Monitor Page**
-   - Click the extension icon → "Monitor Page" button
-   - Or click the eye icon in the popup header
+2. **Select a Tab to Monitor**
+   - Choose from the dropdown list of open web page tabs
+   - Tabs with active monitoring show a ● indicator
 
 3. **Configure Monitoring**
-   - Enter a CSS selector for the HTML block you want to monitor
+   - **CSS Selector**: Enter a CSS selector for the HTML block you want to monitor
      - Example: `#content`, `.main-article`, `div[class='article']`
-   - Set refresh interval (minimum: 5 seconds)
-   - Choose content type (HTML or text)
-   - Enable/disable change detection
+   - **Refresh Interval**: Set how often to check for changes (minimum: 5 seconds)
+   - **Content Type**: Choose HTML or text extraction
+   - **Webhook URL**: (Optional) Enter a specific webhook URL for this tab
+     - Leave empty to use the global webhook from settings
+   - **Change Detection**: Enable/disable to send only when content changes
 
 4. **Start Monitoring**
    - Click "Start Monitoring"
    - The extension will automatically refresh the page and extract content
    - Content will be sent to your webhook when changes are detected (if enabled)
+   - The icon badge will show a green dot (●) when the active tab is being monitored
+
+### Monitoring Multiple Tabs
+
+You can monitor multiple tabs simultaneously, each with its own configuration:
+
+1. Select Tab 1 → Configure → Click "Start Monitoring"
+2. Select Tab 2 → Configure → Click "Start Monitoring"
+3. Select Tab 3 → Configure → Click "Start Monitoring"
+
+Each tab will:
+- Use its own CSS selector
+- Have its own refresh interval
+- Send to its own webhook (or global webhook if not specified)
+- Monitor independently
+
+### Using Profiles
+
+Save and reuse monitoring configurations:
+
+1. **Save a Profile**
+   - Configure your monitoring settings
+   - Click the "Save" button next to the profile dropdown
+   - Enter a profile name
+   - Click "Confirm"
+
+2. **Load a Profile**
+   - Select a profile from the dropdown
+   - Click "Load"
+   - Your settings will be populated automatically
+
+3. **Profiles Include**
+   - CSS selector
+   - Refresh interval
+   - Content type
+   - Change detection setting
+   - Webhook URL (if specified)
 
 ### Finding CSS Selectors
 
@@ -92,10 +152,21 @@ The extension sends the following JSON structure to your n8n webhook:
   "changeDetected": true,
   "metadata": {
     "refreshInterval": 30000,
-    "tabId": 123
+    "tabId": 123,
+    "webhookUrl": "https://your-n8n-instance.com/webhook/..."
   }
 }
 ```
+
+### Webhook Configuration
+
+- **Per-Tab Webhook**: Each monitored tab can have its own webhook URL
+  - Enter the webhook URL in the monitoring settings for that tab
+  - If left empty, uses the global webhook from extension settings
+  
+- **Global Webhook**: Set a default webhook in extension settings
+  - Used when no tab-specific webhook is configured
+  - Access via: Extension icon → Settings icon (⚙️)
 
 ---
 
@@ -116,6 +187,9 @@ The extension sends the following JSON structure to your n8n webhook:
 - **News Monitoring** - Track news sites for new articles
 - **Status Page Monitoring** - Monitor status pages for updates
 - **Automation Workflows** - Trigger n8n workflows based on page changes
+- **Multi-Site Monitoring** - Monitor multiple websites simultaneously, each sending to different webhooks
+- **A/B Testing** - Monitor different versions of pages and route to different workflows
+- **Content Aggregation** - Collect content from multiple sources into different n8n workflows
 
 ---
 

@@ -23,6 +23,7 @@ class PageMonitorPopup {
     this.refreshIntervalInput = document.getElementById('refreshInterval');
     this.contentTypeSelect = document.getElementById('contentType');
     this.changeDetectionCheckbox = document.getElementById('changeDetection');
+    this.webhookUrlInput = document.getElementById('webhookUrl');
     this.tabSelector = document.getElementById('tabSelector');
     this.startBtn = document.getElementById('startBtn');
     this.stopBtn = document.getElementById('stopBtn');
@@ -129,7 +130,13 @@ class PageMonitorPopup {
    */
   async loadDefaults() {
     try {
-      const result = await chrome.storage.local.get(['monitoringDefaults']);
+      const result = await chrome.storage.local.get(['monitoringDefaults', 'webhookUrl']);
+      
+      // Load global webhook URL as default if no tab-specific webhook is set
+      if (result.webhookUrl && !this.webhookUrlInput.value) {
+        this.webhookUrlInput.placeholder = `Global: ${result.webhookUrl.substring(0, 40)}...`;
+      }
+      
       if (result.monitoringDefaults) {
         if (result.monitoringDefaults.refreshInterval) {
           this.refreshIntervalInput.value = result.monitoringDefaults.refreshInterval / 1000;
@@ -212,6 +219,7 @@ class PageMonitorPopup {
       this.refreshIntervalInput.value = (status.config.refreshInterval / 1000) || 30;
       this.contentTypeSelect.value = status.config.contentType || 'html';
       this.changeDetectionCheckbox.checked = status.config.changeDetection !== false;
+      this.webhookUrlInput.value = status.config.webhookUrl || '';
       this.setMonitoringState(true);
     } else {
       this.setMonitoringState(false);
@@ -264,6 +272,8 @@ class PageMonitorPopup {
         return;
       }
 
+      const webhookUrl = this.webhookUrlInput.value.trim();
+      
       const response = await chrome.runtime.sendMessage({
         action: 'startMonitoring',
         tabId: this.currentTabId,
@@ -272,6 +282,7 @@ class PageMonitorPopup {
           refreshInterval: refreshInterval * 1000,
           contentType: this.contentTypeSelect.value || 'html',
           changeDetection: this.changeDetectionCheckbox.checked,
+          webhookUrl: webhookUrl || null, // null means use global webhook
           url: tab.url
         }
       });
@@ -480,7 +491,8 @@ class PageMonitorPopup {
       selector: this.selectorInput.value.trim(),
       refreshInterval: parseInt(this.refreshIntervalInput.value) * 1000,
       changeDetection: this.changeDetectionCheckbox.checked,
-      contentType: this.contentTypeSelect.value || 'html'
+      contentType: this.contentTypeSelect.value || 'html',
+      webhookUrl: this.webhookUrlInput.value.trim() || null
     };
   }
 
@@ -492,6 +504,7 @@ class PageMonitorPopup {
     if (config.refreshInterval) this.refreshIntervalInput.value = config.refreshInterval / 1000;
     if (config.changeDetection !== undefined) this.changeDetectionCheckbox.checked = config.changeDetection;
     if (config.contentType) this.contentTypeSelect.value = config.contentType;
+    if (config.webhookUrl !== undefined) this.webhookUrlInput.value = config.webhookUrl || '';
   }
 
   /**

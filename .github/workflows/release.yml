@@ -29,12 +29,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Validate extension
-        run: npm run build-config
-      
-      - name: Build package
-        run: npm run package
-      
       - name: Get version
         id: get_version
         run: |
@@ -46,19 +40,41 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building release package for version $VERSION"
       
-      - name: Rename package with version
+      - name: Validate extension
+        run: npm run build-config
+      
+      - name: Ensure zip is installed
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          mv page-monitor-to-n8n-*.zip "page-monitor-to-n8n-v${VERSION}.zip"
-          echo "✅ Package: page-monitor-to-n8n-v${VERSION}.zip"
+          if ! command -v zip &> /dev/null; then
+            echo "Installing zip..."
+            sudo apt-get update && sudo apt-get install -y zip
+          else
+            echo "✅ zip is already installed"
+          fi
+      
+      - name: Build package
+        run: npm run package
+      
+      - name: Verify package exists
+        run: |
+          if ls page-monitor-to-n8n-*.zip 1> /dev/null 2>&1; then
+            PACKAGE_FILE=$(ls page-monitor-to-n8n-*.zip | head -1)
+            echo "✅ Package found: $PACKAGE_FILE"
+            ls -lh "$PACKAGE_FILE"
+          else
+            echo "❌ Error: Package file not found"
+            exit 1
+          fi
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: page-monitor-to-n8n-v*.zip
+          files: page-monitor-to-n8n-*.zip
           draft: false
           prerelease: false
           generate_release_notes: true
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -66,6 +82,6 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: release-package
-          path: page-monitor-to-n8n-v*.zip
+          path: page-monitor-to-n8n-*.zip
           retention-days: 30
 

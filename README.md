@@ -193,6 +193,58 @@ The extension sends the following JSON structure to your n8n webhook:
 
 ---
 
+## 🔧 Development
+
+### Setting Up Git Hooks
+
+For contributors, set up git hooks to ensure code quality:
+
+```bash
+npm run setup-hooks
+```
+
+This installs:
+- **pre-commit**: Validates manifest and checks code quality
+- **pre-push**: Runs tests before pushing
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run Jest tests
+npm run test:jest
+
+# Run tests in watch mode
+npm run test:watch
+
+# Generate coverage report
+npm run test:coverage
+```
+
+### Building
+
+```bash
+# Validate extension configuration
+npm run build-config
+
+# Build package for Chrome Web Store
+npm run package
+```
+
+### CI/CD
+
+This project uses GitHub Actions for continuous integration:
+
+- **CI Pipeline**: Runs on every push/PR (validates, tests, builds)
+- **Release Workflow**: Creates release packages when tags are pushed
+- **Git Hooks**: Pre-commit and pre-push hooks for local validation
+
+See [docs/CI_CD.md](docs/CI_CD.md) for detailed CI/CD documentation.
+
+---
+
 ## 🙋‍♂️ Contributing
 
 Want to contribute or improve it?  

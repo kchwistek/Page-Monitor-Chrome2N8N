@@ -1,0 +1,26 @@
+name: Verify Git Hooks
+
+on:
+  pull_request:
+    paths:
+      - '.git/hooks/**'
+      - 'scripts/hooks/**'
+      - 'scripts/setup-hooks.sh'
+
+jobs:
+  verify-hooks:
+    name: Verify Git Hooks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup git hooks
+        run: bash scripts/setup-hooks.sh
+      
+      - name: Verify hooks are executable
+        run: |
+          [ -x .git/hooks/pre-commit ] && echo "✅ pre-commit is executable" || exit 1
+          [ -x .git/hooks/pre-push ] && echo "✅ pre-push is executable" || exit 1
+

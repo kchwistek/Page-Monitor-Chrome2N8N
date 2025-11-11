@@ -1,72 +1,65 @@
-// Background service worker for LinkedIn2n8n
-// Listens for profile data and forwards it to the saved n8n webhook
+/**
+ * Build configuration script for Page Monitor to n8n Chrome Extension
+ * This script validates the extension configuration and prepares it for packaging
+ */
 
-console.log('LinkedIn2n8n: background worker loaded');
+const fs = require('fs');
+const path = require('path');
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background received:', request.action);
+console.log('🔧 Building Page Monitor to n8n extension configuration...\n');
 
-  if (request.action === "sendToN8n") {
-    handleN8nWebhook(request.profileData, sendResponse);
-    return true; // Keep message channel open for async response
-  }
+// Check if manifest.json exists
+const manifestPath = path.join(__dirname, '..', 'manifest.json');
+if (!fs.existsSync(manifestPath)) {
+  console.error('❌ Error: manifest.json not found!');
+  process.exit(1);
+}
+
+// Read and validate manifest.json
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+// Validate required fields
+const requiredFields = ['name', 'version', 'description', 'manifest_version'];
+const missingFields = requiredFields.filter(field => !manifest[field]);
+
+if (missingFields.length > 0) {
+  console.error(`❌ Error: Missing required fields in manifest.json: ${missingFields.join(', ')}`);
+  process.exit(1);
+}
+
+// Check if icons exist
+const iconSizes = [16, 32, 48, 128];
+const missingIcons = iconSizes.filter(size => {
+  const iconPath = path.join(__dirname, '..', manifest.icons[size.toString()]);
+  return !fs.existsSync(iconPath);
 });
 
-/**
- * Retrieves webhook from local storage and sends data
- * @param {Object} profileData - Data extracted from LinkedIn
- * @param {Function} sendResponse - Callback to content script
- */
-function handleN8nWebhook(profileData, sendResponse) {
-  chrome.storage.local.get(['webhookUrl'], async (result) => {
-    const webhookUrl = result.webhookUrl;
-
-    if (!webhookUrl || webhookUrl === "YOUR_N8N_WEBHOOK_URL") {
-      console.error('No valid webhook URL found');
-      sendResponse({
-        success: false,
-        message: 'Webhook URL is not configured. Set it via the extension settings.'
-      });
-      return;
-    }
-
-    // Optional: skip sending in test mode
-    if (profileData.list === "Test") {
-      console.log('Test mode: data processed but not sent');
-      sendResponse({
-        success: true,
-        message: 'Test mode: Data processed without sending to n8n'
-      });
-      return;
-    }
-
-    try {
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        body: JSON.stringify(profileData),
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        sendResponse({
-          success: true,
-          message: 'Profile data successfully sent to n8n'
-        });
-      } else {
-        console.error('Webhook failed:', response.status);
-        sendResponse({
-          success: false,
-          message: `Webhook failed (HTTP ${response.status})`
-        });
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-      sendResponse({
-        success: false,
-        message: 'Network error sending to webhook: ' + err.message
-      });
-    }
-  });
+if (missingIcons.length > 0) {
+  console.error(`❌ Error: Missing icon files: ${missingIcons.join(', ')}`);
+  process.exit(1);
 }
+
+// Check if source files exist
+const sourceFiles = [
+  manifest.action?.default_popup,
+  manifest.background?.service_worker,
+  manifest.options_ui?.page,
+  ...manifest.content_scripts?.flatMap(cs => cs.js || []) || []
+].filter(Boolean);
+
+const missingFiles = sourceFiles.filter(file => {
+  const filePath = path.join(__dirname, '..', file);
+  return !fs.existsSync(filePath);
+});
+
+if (missingFiles.length > 0) {
+  console.error(`❌ Error: Missing source files: ${missingFiles.join(', ')}`);
+  process.exit(1);
+}
+
+console.log('✅ Manifest validation passed');
+console.log(`   Name: ${manifest.name}`);
+console.log(`   Version: ${manifest.version}`);
+console.log(`   Manifest Version: ${manifest.manifest_version}`);
+console.log('\n✅ All required files found');
+console.log('✅ Extension is ready for packaging!\n');

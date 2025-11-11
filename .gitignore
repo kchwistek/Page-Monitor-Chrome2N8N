@@ -30,6 +30,9 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
+# CI/CD
+.github/workflows/*.log
+
 # Temporary files
 *.tmp
 *.temp

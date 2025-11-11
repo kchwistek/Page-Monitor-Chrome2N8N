@@ -11,11 +11,15 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "echo 'Consider adding ESLint for code quality'",
-    "package": "npm run build-config && zip -r page-monitor-to-n8n-v1.0.zip . -x '*.git*' 'node_modules/*' '*.DS_Store' 'package*.json' 'docs/*' '.env*'"
+    "package": "npm run build-config && node scripts/package-extension.js",
+    "package:zip": "npm run build-config && node scripts/package-extension.js",
+    "setup-hooks": "bash scripts/setup-hooks.sh",
+    "precommit": "bash .git/hooks/pre-commit",
+    "prepush": "bash .git/hooks/pre-push"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Klikwork/linkedin2n8n.git"
+    "url": "git+https://github.com/KarelChwistek/Page-Monitor-Chrome2N8N.git"
   },
   "keywords": [
     "chrome-extension",
@@ -31,9 +35,9 @@
   "author": "Karel Chwistek <k.chwistek@volny.cz>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Klikwork/linkedin2n8n/issues"
+    "url": "https://github.com/kchwistek/Page-Monitor-Chrome2N8N/issues"
   },
-  "homepage": "https://github.com/Klikwork/linkedin2n8n#readme",
+  "homepage": "https://github.com/kchwistek/Page-Monitor-Chrome2N8N#readme",
   "engines": {
     "chrome": ">=88.0"
   },
@@ -47,10 +51,6 @@
     "permissions": [
       "activeTab",
       "scripting"
-    ],
-    "hostPermissions": [
-      "*://www.linkedin.com/*",
-      "*://linkedin.com/*"
     ],
     "contentScripts": [
       "src/content-scripts/content-normal.js",

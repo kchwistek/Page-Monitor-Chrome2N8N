@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# Pre-push hook for Page Monitor to n8n extension
+# Runs tests before allowing push
+#
+
+set -e
+
+echo "🧪 Running pre-push checks..."
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check if we're in the right directory
+if [ ! -f "package.json" ]; then
+    echo -e "${RED}❌ Error: package.json not found. Are you in the project root?${NC}"
+    exit 1
+fi
+
+# 1. Validate manifest
+echo "📋 Validating manifest..."
+if ! npm run build-config > /dev/null 2>&1; then
+    echo -e "${RED}❌ Manifest validation failed!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Manifest validation passed${NC}"
+
+# 2. Run tests (if available)
+if [ -f "package.json" ] && grep -q '"test"' package.json; then
+    echo "🧪 Running tests..."
+    if npm test > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ All tests passed${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Some tests failed or no tests found${NC}"
+        echo "   Run 'npm test' manually to see details"
+        read -p "   Continue with push anyway? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚠️  No test script found in package.json${NC}"
+fi
+
+# 3. Check if package can be built
+echo "📦 Testing package build..."
+if npm run package > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Package build successful${NC}"
+else
+    echo -e "${RED}❌ Package build failed!${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ All pre-push checks passed!${NC}"
+exit 0
+

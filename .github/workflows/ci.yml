@@ -1,0 +1,198 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Extension
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Validate manifest
+        run: npm run build-config
+      
+      - name: Check manifest.json syntax
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
+          echo "✅ manifest.json is valid JSON"
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+        continue-on-error: true
+      
+      - name: Run Jest tests
+        run: npm run test:jest
+        continue-on-error: true
+      
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build package
+        run: npm run package
+      
+      - name: Verify package contents
+        run: |
+          unzip -l page-monitor-to-n8n-*.zip | head -20
+          echo "✅ Package created successfully"
+      
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: extension-package
+          path: page-monitor-to-n8n-*.zip
+          retention-days: 7
+
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check for console.log statements
+        run: |
+          if grep -r "console\.log" src/ --include="*.js" 2>/dev/null; then
+            echo "⚠️  Warning: console.log statements found"
+            echo "Consider removing them for production"
+          else
+            echo "✅ No console.log statements found"
+          fi
+        continue-on-error: true
+      
+      - name: Check file sizes
+        run: |
+          find src/ assets/ -type f -size +1M -exec ls -lh {} \;
+        continue-on-error: true
+
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Check for sensitive data
+        run: |
+          if grep -r -i "api.*key\|secret\|password\|token" src/ --include="*.js" 2>/dev/null | grep -v "//\|/\*"; then
+            echo "⚠️  Potential sensitive data found"
+            exit 1
+          else
+            echo "✅ No sensitive data patterns found"
+          fi
+        continue-on-error: true
+
+  publish-check:
+    name: Publish Readiness Check
+    runs-on: ubuntu-latest
+    needs: [validate, test, build]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Verify all required files exist
+        run: |
+          echo "Checking required files..."
+          [ -f "manifest.json" ] && echo "✅ manifest.json"
+          [ -f "LICENSE" ] && echo "✅ LICENSE"
+          [ -f "PRIVACY.md" ] && echo "✅ PRIVACY.md"
+          [ -d "src" ] && echo "✅ src/ directory"
+          [ -d "assets/icons" ] && echo "✅ assets/icons/ directory"
+          [ -f "assets/icons/icon16.png" ] && echo "✅ icon16.png"
+          [ -f "assets/icons/icon32.png" ] && echo "✅ icon32.png"
+          [ -f "assets/icons/icon48.png" ] && echo "✅ icon48.png"
+          [ -f "assets/icons/icon128.png" ] && echo "✅ icon128.png"
+      
+      - name: Check manifest version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "Current version: $VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "⚠️  Version format should be semver (x.y.z)"
+            exit 1
+          fi
+          echo "✅ Version format is valid"
+

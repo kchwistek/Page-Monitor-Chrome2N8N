@@ -35,11 +35,13 @@ const includePatterns = [
 const excludePatterns = [
   '*.git*',
   'node_modules/**',
+  'node_modules/*',
+  'tests/**',
+  'tests/*',
   '*.DS_Store',
   '*.log',
   'package*.json',
   'docs/**',
-  'tests/**',
   'scripts/**',
   '.env*',
   'coverage/**',
@@ -54,7 +56,12 @@ const excludePatterns = [
   '*.swo',
   '*~',
   'Thumbs.db',
-  '.nyc_output/**'
+  '.nyc_output/**',
+  '.github/**',
+  '*.test.js',
+  '*.test.ts',
+  '*.spec.js',
+  '*.spec.ts'
 ];
 
 // Build zip command
@@ -64,6 +71,7 @@ const excludeArgs = excludePatterns.map(pattern => `-x "${pattern}"`).join(' ');
 try {
   // Use zip command (works on Linux/Mac)
   // For Windows, you might need to use PowerShell or install zip
+  // -r: recursive, -q: quiet, -x: exclude patterns
   const zipCommand = `cd "${cwd}" && zip -r "${zipName}" . ${excludeArgs} -q`;
   
   console.log('📝 Creating package...');

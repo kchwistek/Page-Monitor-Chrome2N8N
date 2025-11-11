@@ -13,19 +13,31 @@ const monitoringIntervals = new Map();
 const monitoringConfigs = new Map();
 
 /**
- * Update extension icon to reflect monitoring state
+ * Update extension icon to reflect monitoring state of the active tab
  */
 async function updateIconState() {
   try {
-    const hasActiveMonitoring = monitoringIntervals.size > 0;
+    // Get the active tab in the current window
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs[0];
     
-    if (hasActiveMonitoring) {
-      // Show active monitoring indicator
+    if (!activeTab) {
+      // No active tab, clear indicator
+      await chrome.action.setBadgeText({ text: '' });
+      await chrome.action.setTitle({ title: 'Page Monitor to n8n' });
+      return;
+    }
+    
+    const activeTabId = activeTab.id;
+    const isActiveTabMonitored = monitoringIntervals.has(activeTabId);
+    
+    if (isActiveTabMonitored) {
+      // Show active monitoring indicator for the active tab
       await chrome.action.setBadgeText({ text: '●' });
       await chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' }); // Green
       await chrome.action.setTitle({ title: 'Page Monitor to n8n - Monitoring Active' });
     } else {
-      // Clear indicator
+      // Clear indicator if active tab is not monitored
       await chrome.action.setBadgeText({ text: '' });
       await chrome.action.setTitle({ title: 'Page Monitor to n8n' });
     }
@@ -460,6 +472,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "getAllMonitoringStatus") {
+    handleGetAllMonitoringStatus(request, sender, sendResponse);
+    return true;
+  }
+
   if (request.action === "contentExtracted") {
     handleContentExtracted(request, sender, sendResponse);
     return true;
@@ -488,12 +505,15 @@ async function handleStartMonitoring(request, sender, sendResponse) {
       return;
     }
 
+    // Support both request.config (from popup) and direct properties (from monitor page)
+    const configData = request.config || request;
+    
     const config = {
-      selector: request.selector,
-      refreshInterval: request.refreshInterval || 30000,
-      changeDetection: request.changeDetection !== false,
-      contentType: request.contentType || 'html',
-      url: request.url || sender.tab?.url
+      selector: configData.selector,
+      refreshInterval: configData.refreshInterval || 30000,
+      changeDetection: configData.changeDetection !== false,
+      contentType: configData.contentType || 'html',
+      url: configData.url || request.url || sender.tab?.url
     };
 
     await startMonitoring(tabId, config);
@@ -534,6 +554,19 @@ async function handleGetMonitoringStatus(request, sender, sendResponse) {
 
     const status = await getMonitoringStatus(tabId);
     sendResponse({ success: true, ...status });
+  } catch (error) {
+    sendResponse({ success: false, message: error.message });
+  }
+}
+
+/**
+ * Handle get all monitoring status request
+ */
+async function handleGetAllMonitoringStatus(request, sender, sendResponse) {
+  try {
+    // Return all tab IDs that are currently being monitored
+    const monitoredTabs = Array.from(monitoringIntervals.keys());
+    sendResponse({ success: true, monitoredTabs });
   } catch (error) {
     sendResponse({ success: false, message: error.message });
   }
@@ -611,7 +644,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 /**
- * Handle tab update - check if URL changed
+ * Handle tab activation - update icon state when user switches tabs
+ */
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  await updateIconState();
+});
+
+/**
+ * Handle tab update - check if URL changed and update icon if it's the active tab
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url) {
@@ -622,6 +662,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         ...config,
         url: tab.url
       });
+    }
+  }
+  
+  // Update icon state if this is the active tab and status changed
+  if (changeInfo.status === 'complete' || changeInfo.status === 'loading') {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0] && tabs[0].id === tabId) {
+      await updateIconState();
     }
   }
 });

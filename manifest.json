@@ -3,7 +3,7 @@
   "name": "Page Monitor to n8n",
   "version": "1.0.0",
   "description": "Monitor web pages and send content changes to your n8n webhook. Perfect for automation workflows.",
-  "permissions": ["activeTab", "storage", "tabs"],
+  "permissions": ["activeTab", "storage", "tabs", "scripting"],
   "host_permissions": [
     "<all_urls>"
   ],

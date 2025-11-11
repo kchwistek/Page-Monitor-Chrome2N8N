@@ -9,9 +9,10 @@ console.log('Page Monitor: Content script loaded on:', window.location.href);
  * Extract content from a CSS selector
  * @param {string} selector - CSS selector for the content block
  * @param {string} contentType - 'html' or 'text'
+ * @param {boolean} validateContent - Whether to validate content is fully loaded
  * @returns {Object} Extracted content data
  */
-function extractBlockContent(selector, contentType = 'html') {
+function extractBlockContent(selector, contentType = 'html', validateContent = false) {
   try {
     if (!selector || selector.trim() === '') {
       return {
@@ -36,9 +37,63 @@ function extractBlockContent(selector, contentType = 'html') {
       content = element.innerHTML || element.outerHTML || '';
     }
 
+    const trimmedContent = content.trim();
+
+    // Validate content if requested
+    if (validateContent) {
+      // Check for minimum content length
+      if (trimmedContent.length < 100) {
+        return {
+          success: false,
+          error: 'Content too short, page may still be loading',
+          content: trimmedContent // Still return content for debugging
+        };
+      }
+
+      // Check for common loading indicators
+      const loadingIndicators = [
+        'NaN',
+        'undefined',
+        'Loading...',
+        'loading',
+        /\bNaN\b/,
+        /undefined items/,
+        /of NaN pages/
+      ];
+
+      for (const indicator of loadingIndicators) {
+        if (typeof indicator === 'string' && trimmedContent.includes(indicator)) {
+          return {
+            success: false,
+            error: 'Page still loading (detected loading indicators)',
+            content: trimmedContent
+          };
+        } else if (indicator instanceof RegExp && indicator.test(trimmedContent)) {
+          return {
+            success: false,
+            error: 'Page still loading (detected loading indicators)',
+            content: trimmedContent
+          };
+        }
+      }
+
+      // For text content, check if it's mostly whitespace or just headers
+      if (contentType === 'text') {
+        const lines = trimmedContent.split('\n').filter(line => line.trim().length > 0);
+        // If we have very few non-empty lines, content might not be loaded
+        if (lines.length < 3) {
+          return {
+            success: false,
+            error: 'Content appears incomplete (too few lines)',
+            content: trimmedContent
+          };
+        }
+      }
+    }
+
     return {
       success: true,
-      content: content.trim(),
+      content: trimmedContent,
       selector: selector,
       url: window.location.href,
       timestamp: new Date().toISOString()
@@ -71,10 +126,28 @@ async function getMonitoringConfig(tabId) {
 /**
  * Handle content extraction request from background script
  */
-async function handleExtractContent(sender) {
+async function handleExtractContent(request, sender) {
   try {
-    // Get tab ID from sender or try to get from message
-    let tabId = sender?.tab?.id;
+    // Check if selector is provided directly in the request
+    if (request.selector) {
+      const contentType = request.contentType || 'html';
+      const validateContent = request.validateContent || false;
+      const result = extractBlockContent(request.selector, contentType, validateContent);
+      
+      // If tabId is provided and extraction successful, notify background
+      if (result.success && request.tabId) {
+        chrome.runtime.sendMessage({
+          action: 'contentExtracted',
+          tabId: request.tabId,
+          data: result
+        });
+      }
+      
+      return result;
+    }
+
+    // Fallback: Get tab ID from sender or try to get from message
+    let tabId = request.tabId || sender?.tab?.id;
     
     if (!tabId) {
       // Try to get from storage using URL pattern
@@ -144,9 +217,15 @@ async function handleExtractContent(sender) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Page Monitor content script received message:', request.action);
 
+  // Handle ping to check if script is loaded
+  if (request.action === 'ping') {
+    sendResponse({ success: true, loaded: true });
+    return true;
+  }
+
   if (request.action === 'extractContent') {
     // Handle async extraction
-    handleExtractContent(sender).then(result => {
+    handleExtractContent(request, sender).then(result => {
       sendResponse(result);
     }).catch(error => {
       sendResponse({

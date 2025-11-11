@@ -16,8 +16,23 @@
     </div>
 
     <div class="form-section">
+      <!-- Tab Selection -->
+      <div class="form-group">
+        <label for="tabSelector">
+          <i class="fas fa-window-maximize"></i>
+          Select Tab to Monitor
+          <button type="button" id="refreshTabsBtn" class="refresh-btn" title="Refresh tabs list">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+        </label>
+        <select id="tabSelector" class="tab-selector">
+          <option value="">Loading tabs...</option>
+        </select>
+        <small class="help-text">Choose which web page tab you want to monitor</small>
+      </div>
+
       <!-- Current Tab Info -->
-      <div class="info-box" id="currentTabInfo">
+      <div class="info-box" id="currentTabInfo" style="display: none;">
         <i class="fas fa-info-circle"></i>
         <span id="currentTabUrl">Loading...</span>
       </div>
@@ -78,6 +93,47 @@
           <span>Only send when content changes</span>
         </label>
         <small class="help-text">If unchecked, content will be sent on every refresh</small>
+      </div>
+
+      <hr />
+
+      <!-- Profile Management -->
+      <div class="form-group">
+        <label>
+          <i class="fas fa-bookmark"></i>
+          Monitoring Profiles
+        </label>
+        <div class="profile-section">
+          <div class="profile-controls">
+            <select id="profileSelector" class="profile-selector">
+              <option value="">-- Select a profile --</option>
+            </select>
+            <button type="button" id="loadProfileBtn" class="btn-profile" title="Load selected profile">
+              <i class="fas fa-download"></i> Load
+            </button>
+            <button type="button" id="saveProfileBtn" class="btn-profile" title="Save current settings as profile">
+              <i class="fas fa-save"></i> Save
+            </button>
+            <button type="button" id="deleteProfileBtn" class="btn-profile btn-danger" title="Delete selected profile">
+              <i class="fas fa-trash"></i> Delete
+            </button>
+          </div>
+          <div class="profile-input-group" id="saveProfileGroup" style="display: none;">
+            <input 
+              type="text" 
+              id="profileNameInput" 
+              placeholder="Enter profile name..."
+              class="profile-name-input"
+            />
+            <button type="button" id="confirmSaveBtn" class="btn-profile btn-primary">
+              <i class="fas fa-check"></i> Confirm
+            </button>
+            <button type="button" id="cancelSaveBtn" class="btn-profile">
+              <i class="fas fa-times"></i> Cancel
+            </button>
+          </div>
+        </div>
+        <small class="help-text">Save and reuse monitoring configurations</small>
       </div>
 
       <hr />

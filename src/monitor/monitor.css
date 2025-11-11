@@ -52,6 +52,33 @@ label {
   margin-bottom: 12px;
   font-size: 15px;
   gap: 8px;
+  justify-content: space-between;
+}
+
+.refresh-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+  color: #333;
+}
+
+.refresh-btn:active {
+  transform: rotate(180deg);
+}
+
+.tab-selector {
+  font-size: 14px;
 }
 
 input[type="text"],
@@ -226,6 +253,59 @@ button:disabled {
 
 .btn-send:hover:not(:disabled) {
   background-color: #218838;
+}
+
+.btn-profile {
+  background-color: #6c757d;
+  min-width: auto;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.btn-profile:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+/* Profile Management */
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profile-selector {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0;
+}
+
+.profile-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.profile-name-input {
+  flex: 1;
+  margin-bottom: 0;
+  padding: 10px 15px;
+  font-size: 14px;
 }
 
 /* Result Message */

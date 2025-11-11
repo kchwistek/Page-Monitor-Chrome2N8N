@@ -110,9 +110,9 @@ async function sendContentToWebhook(tabId, content, url, selector, changeDetecte
   try {
     const { webhookUrl } = await chrome.storage.local.get('webhookUrl');
 
-    if (!webhookUrl) {
+    if (!webhookUrl || webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
       console.error('No webhook URL configured');
-      return { success: false, message: 'No webhook URL set' };
+      return { success: false, message: 'No webhook URL set. Please configure it in extension options.' };
     }
 
     const config = await getMonitoringConfig(tabId);

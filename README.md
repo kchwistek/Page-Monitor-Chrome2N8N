@@ -127,6 +127,12 @@ Want to contribute or improve it?
 
 ---
 
+## 🙏 Acknowledgements
+
+- This project builds on the original [LinkedIn to n8n](https://github.com/Klikwork/linkedin2n8n) extension created by [Klikwork](https://github.com/Klikwork). Huge thanks for the solid foundation and inspiration.
+
+---
+
 ## 📄 License
 
 MIT License – see [LICENSE](LICENSE)

@@ -235,48 +235,58 @@ async function refreshPage(tabId) {
       return;
     }
 
-    // Reload the tab
+    const targetUrl = config.initialUrl || config.url || '';
+    if (targetUrl && tab.url) {
+      const normalizedTarget = normalizeUrl(targetUrl);
+      const normalizedCurrent = normalizeUrl(tab.url);
+
+      if (normalizedTarget !== normalizedCurrent) {
+        console.warn(`Tab ${tabId} navigated away from monitored URL. Stopping monitoring to avoid refreshing unrelated tab.`);
+        await stopMonitoring(tabId);
+        return;
+      }
+    }
+
+    // Reload the specific monitored tab only
     await chrome.tabs.reload(tabId);
-    
-    // Wait for page to be fully loaded (status = 'complete')
+
+    // Wait for the tab to fully load before attempting extraction
     await waitForTabComplete(tabId, 10000); // Max 10 seconds
-    
-    // Wait for page to load and content script to be ready
+
     // Retry mechanism to handle slow-loading pages and dynamic content
     let retries = 0;
-    const maxRetries = 10; // Increased retries for slow-loading content
+    const maxRetries = 10;
     const retryDelay = 3000; // 3 seconds between retries
-    
+
     const tryExtract = async () => {
       try {
-        // Request extraction with validation
         const response = await chrome.tabs.sendMessage(tabId, {
           action: 'extractContent',
           selector: config.selector,
           contentType: config.contentType || 'html',
-          tabId: tabId,
-          validateContent: true // Request content validation
+          tabId,
+          validateContent: true
         });
-        
+
         if (response && response.success) {
-          // Validate that content is meaningful (not just headers/empty)
           const contentLength = response.content ? response.content.length : 0;
-          const minContentLength = 100; // Minimum content length to consider valid
-          
+          const minContentLength = 100;
+
           if (contentLength < minContentLength) {
             console.log(`Content too short (${contentLength} chars), likely still loading...`);
             throw new Error('Content not fully loaded');
           }
-          
-          // Check for common loading indicators
-          if (response.content.includes('NaN') || 
-              response.content.includes('undefined') ||
-              response.content.includes('Loading...') ||
-              response.content.match(/\bNaN\b/)) {
+
+          if (
+            response.content.includes('NaN') ||
+            response.content.includes('undefined') ||
+            response.content.includes('Loading...') ||
+            /\bNaN\b/.test(response.content)
+          ) {
             console.log('Page still loading (detected loading indicators)');
             throw new Error('Content still loading');
           }
-          
+
           console.log('Content extraction successful after refresh');
         } else {
           throw new Error(response?.error || 'Extraction failed');
@@ -284,16 +294,16 @@ async function refreshPage(tabId) {
       } catch (error) {
         if (retries < maxRetries) {
           retries++;
-          console.log(`Retrying content extraction (${retries}/${maxRetries})...`);
+          console.log(`Retrying content extraction for tab ${tabId} (${retries}/${maxRetries})...`);
           setTimeout(tryExtract, retryDelay);
         } else {
           console.error('Failed to extract content after refresh:', error);
         }
       }
     };
-    
-    // Start trying after initial delay (wait for dynamic content to load)
-    setTimeout(tryExtract, 5000); // 5 seconds initial delay for dynamic content
+
+    // Delay initial extraction attempt to allow dynamic content loading
+    setTimeout(tryExtract, 5000);
   } catch (error) {
     console.error('Error refreshing page:', error);
   }
@@ -306,21 +316,36 @@ async function refreshPage(tabId) {
  */
 async function waitForTabComplete(tabId, timeout = 10000) {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
     try {
       const tab = await chrome.tabs.get(tabId);
       if (tab.status === 'complete') {
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, 500)); // Check every 500ms
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (error) {
       console.error('Error waiting for tab complete:', error);
       return;
     }
   }
-  
-  console.warn('Timeout waiting for tab to complete');
+
+  console.warn(`Timeout waiting for tab ${tabId} to complete loading`);
+}
+
+function normalizeUrl(url) {
+  if (!url) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    const normalized = parsed.href.replace(/\/+$/, '');
+    return normalized;
+  } catch (error) {
+    return url;
+  }
 }
 
 /**
@@ -337,29 +362,33 @@ async function startMonitoring(tabId, config) {
     throw new Error('Invalid monitoring configuration');
   }
 
-  // Save configuration
+  let tabInfo = null;
+  try {
+    tabInfo = await chrome.tabs.get(tabId);
+  } catch (error) {
+    console.error('Error getting tab info:', error);
+  }
+
+  const resolvedUrl = config.url || tabInfo?.url || '';
+  const windowId = tabInfo?.windowId ?? null;
+
   await saveMonitoringConfig(tabId, {
     ...config,
     enabled: true,
-    url: config.url || ''
+    url: resolvedUrl,
+    initialUrl: resolvedUrl,
+    tabId,
+    windowId
   });
-
-  // Get tab URL if not provided
-  let url = config.url;
-  if (!url) {
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      url = tab.url;
-      await saveMonitoringConfig(tabId, { ...config, url });
-    } catch (error) {
-      console.error('Error getting tab URL:', error);
-    }
-  }
 
   // Initial content extraction
   try {
     await chrome.tabs.sendMessage(tabId, {
-      action: 'extractContent'
+      action: 'extractContent',
+      selector: config.selector,
+      contentType: config.contentType || 'html',
+      tabId,
+      validateContent: true
     });
   } catch (error) {
     console.error('Error sending initial extraction request:', error);

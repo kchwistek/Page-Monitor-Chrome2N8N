@@ -9,7 +9,7 @@ console.log('Page Monitor: Content script loaded on:', window.location.href);
  * Extract content from a CSS selector
  * @param {string} selector - CSS selector for the content block
  * @param {string} contentType - 'html' or 'text'
- * @param {boolean} validateContent - Whether to validate content is fully loaded
+ * @param {boolean} validateContent - Whether to validate the extracted content
  * @returns {Object} Extracted content data
  */
 function extractBlockContent(selector, contentType = 'html', validateContent = false) {
@@ -39,18 +39,16 @@ function extractBlockContent(selector, contentType = 'html', validateContent = f
 
     const trimmedContent = content.trim();
 
-    // Validate content if requested
     if (validateContent) {
-      // Check for minimum content length
-      if (trimmedContent.length < 100) {
+      const minContentLength = 100;
+      if (trimmedContent.length < minContentLength) {
         return {
           success: false,
           error: 'Content too short, page may still be loading',
-          content: trimmedContent // Still return content for debugging
+          content: trimmedContent
         };
       }
 
-      // Check for common loading indicators
       const loadingIndicators = [
         'NaN',
         'undefined',
@@ -68,7 +66,9 @@ function extractBlockContent(selector, contentType = 'html', validateContent = f
             error: 'Page still loading (detected loading indicators)',
             content: trimmedContent
           };
-        } else if (indicator instanceof RegExp && indicator.test(trimmedContent)) {
+        }
+
+        if (indicator instanceof RegExp && indicator.test(trimmedContent)) {
           return {
             success: false,
             error: 'Page still loading (detected loading indicators)',
@@ -77,10 +77,8 @@ function extractBlockContent(selector, contentType = 'html', validateContent = f
         }
       }
 
-      // For text content, check if it's mostly whitespace or just headers
       if (contentType === 'text') {
-        const lines = trimmedContent.split('\n').filter(line => line.trim().length > 0);
-        // If we have very few non-empty lines, content might not be loaded
+        const lines = trimmedContent.split('\n').map(line => line.trim()).filter(line => line.length > 0);
         if (lines.length < 3) {
           return {
             success: false,
@@ -190,7 +188,7 @@ async function handleExtractContent(request, sender) {
     }
 
     const contentType = config.contentType || 'html';
-    const result = extractBlockContent(config.selector, contentType);
+    const result = extractBlockContent(config.selector, contentType, request.validateContent || false);
 
     if (result.success && tabId) {
       // Send to background script

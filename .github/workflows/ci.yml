@@ -109,7 +109,7 @@ jobs:
           fi
       
       - name: Upload package artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: extension-package
           path: page-monitor-to-n8n-*.zip

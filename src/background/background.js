@@ -46,14 +46,83 @@ async function updateIconState() {
   }
 }
 
-// Initialize icon state on startup
-chrome.runtime.onStartup.addListener(() => {
-  updateIconState();
+/**
+ * Restore monitoring state from storage on service worker startup
+ * This handles browser refresh scenarios where the service worker restarts
+ */
+async function restoreMonitoringState() {
+  try {
+    const result = await chrome.storage.local.get(['monitoringConfig']);
+    const configs = result.monitoringConfig || {};
+    
+    if (Object.keys(configs).length === 0) {
+      console.log('No monitoring configs to restore');
+      return;
+    }
+    
+    // Get all open tabs
+    const tabs = await chrome.tabs.query({});
+    const webTabs = tabs.filter(tab => {
+      const url = tab.url || '';
+      return url && !url.startsWith('chrome-extension://') && 
+             !url.startsWith('chrome://') && 
+             (url.startsWith('http://') || url.startsWith('https://'));
+    });
+    
+    // Restore monitoring for each saved config
+    for (const [savedTabId, config] of Object.entries(configs)) {
+      if (!config.enabled) {
+        continue; // Skip disabled configs
+      }
+      
+      // Find matching tab by URL
+      const targetUrl = config.initialUrl || config.url;
+      if (!targetUrl) {
+        console.warn(`Config for tab ${savedTabId} has no URL, skipping`);
+        continue;
+      }
+      
+      const normalizedTarget = normalizeUrl(targetUrl);
+      const matchingTab = webTabs.find(tab => {
+        const normalizedTab = normalizeUrl(tab.url || '');
+        return normalizedTab === normalizedTarget;
+      });
+      
+      if (matchingTab) {
+        const currentTabId = matchingTab.id;
+        
+        // Update tabId if it changed
+        if (parseInt(savedTabId) !== currentTabId) {
+          console.log(`Tab ID changed: ${savedTabId} -> ${currentTabId}, updating config`);
+          // Remove old config, will be recreated with new tabId
+          delete configs[savedTabId];
+          await chrome.storage.local.set({ monitoringConfig: configs });
+        }
+        
+        // Restore monitoring with current tab ID
+        console.log(`Restoring monitoring for tab ${currentTabId} (URL: ${targetUrl})`);
+        await startMonitoring(currentTabId, config);
+      } else {
+        console.log(`No matching tab found for URL: ${targetUrl}, config not restored`);
+      }
+    }
+    
+    await updateIconState();
+  } catch (error) {
+    console.error('Error restoring monitoring state:', error);
+  }
+}
+
+// Initialize icon state and restore monitoring on startup
+chrome.runtime.onStartup.addListener(async () => {
+  await restoreMonitoringState();
+  await updateIconState();
 });
 
-// Also update icon state when extension is installed/enabled
-chrome.runtime.onInstalled.addListener(() => {
-  updateIconState();
+// Also restore monitoring and update icon state when extension is installed/enabled
+chrome.runtime.onInstalled.addListener(async () => {
+  await restoreMonitoringState();
+  await updateIconState();
 });
 
 /**
@@ -151,23 +220,56 @@ async function hasContentChanged(tabId, currentContent) {
  * @param {string} url - Page URL
  * @param {string} selector - CSS selector used
  * @param {boolean} changeDetected - Whether change was detected
+ * @param {string|null} overrideWebhookUrl - Optional webhook URL to use (from form input)
  */
-async function sendContentToWebhook(tabId, content, url, selector, changeDetected) {
+async function sendContentToWebhook(tabId, content, url, selector, changeDetected, overrideWebhookUrl = null) {
   try {
-    // Get tab-specific webhook URL from config, fallback to global webhook
-    const config = await getMonitoringConfig(tabId);
-    let webhookUrl = config?.webhookUrl;
+    console.log('=== sendContentToWebhook Debug ===');
+    console.log('overrideWebhookUrl parameter:', overrideWebhookUrl);
+    console.log('overrideWebhookUrl type:', typeof overrideWebhookUrl);
     
-    // If no tab-specific webhook, use global webhook
-    if (!webhookUrl) {
-      const storage = await chrome.storage.local.get('webhookUrl');
-      webhookUrl = storage.webhookUrl;
+    // Get config first (needed for metadata regardless of webhook source)
+    const config = await getMonitoringConfig(tabId);
+    console.log('Tab config:', config);
+    
+    let webhookUrl = overrideWebhookUrl;
+    
+    // If no override provided, get tab-specific webhook URL from config, fallback to global webhook
+    if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim()) {
+      console.log('No valid override webhook, checking saved config...');
+      webhookUrl = config?.webhookUrl;
+      console.log('Webhook URL from config:', webhookUrl);
+      
+      // Only use tab-specific webhook if it's a valid non-empty string
+      if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim()) {
+        console.log('No valid webhook in config, checking global webhook...');
+        // Fall back to global webhook
+        const storage = await chrome.storage.local.get('webhookUrl');
+        webhookUrl = storage.webhookUrl;
+        console.log('Global webhook from storage:', webhookUrl);
+        
+        // Validate webhook URL after checking both tab-specific and global
+        if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim() || webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
+          console.error('❌ No webhook URL configured. Tab config:', config, 'Global webhook:', storage.webhookUrl);
+          return { success: false, message: 'No webhook URL set. Please configure it in the monitoring settings or extension options.' };
+        }
+      } else {
+        // Tab-specific webhook is set, validate it
+        if (webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
+          console.error('Invalid webhook URL in tab config:', config);
+          return { success: false, message: 'Invalid webhook URL configured. Please update it in the monitoring settings.' };
+        }
+      }
+    } else {
+      console.log('✅ Using override webhook URL:', webhookUrl);
+      // Override webhook URL provided, validate it
+      if (webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
+        console.error('Invalid webhook URL provided:', webhookUrl);
+        return { success: false, message: 'Invalid webhook URL. Please check the URL in the monitoring settings.' };
+      }
     }
-
-    if (!webhookUrl || webhookUrl === 'YOUR_N8N_WEBHOOK_URL') {
-      console.error('No webhook URL configured');
-      return { success: false, message: 'No webhook URL set. Please configure it in the monitoring settings or extension options.' };
-    }
+    
+    console.log('Final webhook URL to use:', webhookUrl);
 
     const payload = {
       type: 'page_monitor',
@@ -496,6 +598,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "sendContentNow") {
+    console.log('🔵 Background received sendContentNow action');
     handleSendContentNow(request, sender, sendResponse);
     return true;
   }
@@ -523,6 +626,11 @@ async function handleStartMonitoring(request, sender, sendResponse) {
       contentType: configData.contentType || 'html',
       url: configData.url || request.url || sender.tab?.url
     };
+    
+    // Only include webhookUrl if it's a non-empty string (null/empty means use global)
+    if (configData.webhookUrl && typeof configData.webhookUrl === 'string' && configData.webhookUrl.trim()) {
+      config.webhookUrl = configData.webhookUrl.trim();
+    }
 
     await startMonitoring(tabId, config);
     sendResponse({ success: true, message: 'Monitoring started' });
@@ -627,13 +735,29 @@ async function handleSendContentNow(request, sender, sendResponse) {
       }
     }
 
+    // Use webhook URL from request if provided (from popup form), otherwise use saved config or global
+    console.log('=== handleSendContentNow Debug ===');
+    console.log('Request object:', request);
+    console.log('Request.webhookUrl:', request.webhookUrl);
+    console.log('Request.webhookUrl type:', typeof request.webhookUrl);
+    
+    let webhookUrl = null;
+    if (request.webhookUrl && typeof request.webhookUrl === 'string' && request.webhookUrl.trim()) {
+      webhookUrl = request.webhookUrl.trim();
+      console.log('✅ Using webhook URL from form:', webhookUrl);
+    } else {
+      console.log('⚠️ No valid webhook URL in request. Value:', request.webhookUrl);
+      console.log('Will check saved config and global webhook...');
+    }
+
     // Send directly to webhook (bypass change detection)
     const result = await sendContentToWebhook(
       tabId,
       data.content,
       url,
       data.selector,
-      true // Always mark as changed for manual sends
+      true, // Always mark as changed for manual sends
+      webhookUrl // Pass webhook URL if provided from form
     );
 
     sendResponse(result);

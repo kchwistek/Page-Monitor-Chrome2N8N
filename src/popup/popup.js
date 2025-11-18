@@ -370,6 +370,8 @@ class PageMonitorPopup {
    * Send content now
    */
   async sendNow() {
+    console.log('🔵 sendNow() called');
+    
     if (!this.currentTabId) {
       this.showResult('Please select a tab', false);
       return;
@@ -400,11 +402,24 @@ class PageMonitorPopup {
         return;
       }
 
+      // Get webhook URL from input field (if provided)
+      const rawWebhookValue = this.webhookUrlInput.value;
+      const webhookUrl = rawWebhookValue ? rawWebhookValue.trim() : null;
+      
+      console.log('=== Send Now Debug ===');
+      console.log('Raw webhook input value:', rawWebhookValue);
+      console.log('Trimmed webhook URL:', webhookUrl);
+      console.log('Input element:', this.webhookUrlInput);
+      console.log('Input element ID:', this.webhookUrlInput?.id);
+      console.log('Current tab ID:', this.currentTabId);
+      console.log('About to send message with webhookUrl:', webhookUrl);
+
       const sendResponse = await Promise.race([
         chrome.runtime.sendMessage({
           action: 'sendContentNow',
           tabId: this.currentTabId,
-          data: response
+          data: response,
+          webhookUrl: webhookUrl // Pass webhook URL from form
         }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)

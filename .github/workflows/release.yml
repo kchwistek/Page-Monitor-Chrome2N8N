@@ -69,6 +69,32 @@ jobs:
             exit 1
           fi
       
+      - name: Upload to Chrome Web Store (requires secrets)
+        if: ${{ secrets.CHROME_EXTENSION_ID != '' && secrets.CHROME_CLIENT_ID != '' && secrets.CHROME_CLIENT_SECRET != '' && secrets.CHROME_REFRESH_TOKEN != '' }}
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          PACKAGE_FILE=$(ls page-monitor-to-n8n-*.zip | head -1)
+          echo "⬆️ Uploading $PACKAGE_FILE to Chrome Web Store..."
+          
+          npx chrome-webstore-upload-cli \
+            --extension-id "$CHROME_EXTENSION_ID" \
+            --client-id "$CHROME_CLIENT_ID" \
+            --client-secret "$CHROME_CLIENT_SECRET" \
+            --refresh-token "$CHROME_REFRESH_TOKEN" \
+            upload --source "$PACKAGE_FILE"
+          
+          echo "📨 Requesting publish (still requires Chrome Web Store review)..."
+          npx chrome-webstore-upload-cli \
+            --extension-id "$CHROME_EXTENSION_ID" \
+            --client-id "$CHROME_CLIENT_ID" \
+            --client-secret "$CHROME_CLIENT_SECRET" \
+            --refresh-token "$CHROME_REFRESH_TOKEN" \
+            publish --target default
+      
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:

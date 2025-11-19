@@ -1,0 +1,439 @@
+---
+alwaysApply: true
+---
+
+// 🧑‍💻 Your response must always begin with the UTF-8 robot symbol: 🤖
+
+# Page Monitor to n8n - Chrome Extension Development Rules
+
+## Project Overview
+This is a Chrome Extension (Manifest V3) that monitors web pages and sends content changes to n8n webhooks. The extension supports multiple tab monitoring, content extraction via CSS selectors, change detection using SHA-256 hashing, and profile management.
+
+## Architecture
+
+### Core Components
+- **Background Service Worker** (`src/background/background.js`): Handles monitoring logic, intervals, webhook communication, and state management
+- **Content Scripts** (`src/content-scripts/page-monitor-content.js`): Extracts content from web pages using CSS selectors
+- **Popup UI** (`src/popup/`): Main user interface for configuring and managing monitoring
+- **Options Page** (`src/options/`): Global settings (webhook URL, defaults)
+- **Monitor Page** (`src/monitor/`): Alternative monitoring interface
+
+### Key Technologies
+- **Vanilla JavaScript** (ES6+) - No frameworks
+- **Chrome Extension APIs** (Manifest V3)
+- **Chrome Storage API** for persistence
+- **Jest** for testing
+- **Node.js** for build scripts
+
+## Code Style & Patterns
+
+### JavaScript Standards
+- Use **ES6+ features**: classes, async/await, arrow functions, destructuring, template literals
+- Use **JSDoc comments** for all functions and classes
+- Prefer **async/await** over promises for readability
+- Use **const/let** - avoid `var`
+- Use **arrow functions** for callbacks and event handlers
+- Use **template literals** for string interpolation
+
+### Chrome Extension Patterns
+- Use **chrome.runtime.sendMessage** for communication between components
+- Use **chrome.storage.local** for persistent data (not sync storage)
+- Always handle **chrome.runtime.lastError** when using Chrome APIs
+- Use **chrome.tabs.query** to get tab information
+- Use **chrome.scripting.executeScript** for dynamic script injection (Manifest V3)
+
+### Error Handling
+- Always wrap async operations in **try/catch** blocks
+- Provide meaningful error messages to users
+- Log errors to console with context: `console.error('Error description:', error)`
+- Return error objects with `success: false` and `message` properties
+
+### Message Passing
+- Use structured message objects with `action` property
+- Always return `true` from message listeners if using `sendResponse` asynchronously
+- Include `tabId` in messages when tab context is needed
+- Handle message failures gracefully
+
+### Storage Patterns
+- Store monitoring configs in `monitoringConfig` object keyed by tabId
+- Store profiles in `monitoringProfiles` object
+- Store global webhook in `webhookUrl` key
+- Store defaults in `monitoringDefaults` object
+- Always use `chrome.storage.local.get()` and `chrome.storage.local.set()`
+
+## File Organization
+
+### Directory Structure
+```
+src/
+  background/     - Service worker scripts
+  content-scripts/ - Content scripts injected into web pages
+  popup/          - Extension popup UI
+  options/        - Options/settings page
+  monitor/        - Monitor page UI
+```
+
+### Naming Conventions
+- **Files**: kebab-case (e.g., `page-monitor-content.js`)
+- **Classes**: PascalCase (e.g., `PageMonitorPopup`)
+- **Functions**: camelCase (e.g., `extractBlockContent`)
+- **Constants**: UPPER_SNAKE_CASE (e.g., `MAX_RETRIES`)
+- **CSS classes**: kebab-case (e.g., `status-display`)
+
+## Chrome Extension Specific Rules
+
+### Manifest V3 Requirements
+- Use **service worker** for background scripts (not persistent background pages)
+- Use **chrome.scripting.executeScript** instead of `chrome.tabs.executeScript`
+- Declare all permissions in `manifest.json`
+- Use **host_permissions** for URL access
+- Use **web_accessible_resources** for resources accessed by content scripts
+
+### Permissions
+- `activeTab`: Access to active tab
+- `storage`: Local storage access
+- `tabs`: Tab information
+- `scripting`: Dynamic script injection
+- `host_permissions`: `<all_urls>` for content script injection
+
+### Content Scripts
+- Content scripts run in isolated world - cannot access page JavaScript
+- Use `chrome.runtime.sendMessage` to communicate with background
+- Extract content using DOM APIs (`querySelector`, `innerHTML`, `textContent`)
+- Validate content before sending (check for loading indicators, minimum length)
+
+### Background Service Worker
+- Service workers can be terminated - use `chrome.storage` for persistence
+- Store active intervals in memory (`Map` or `Set`)
+- Restore monitoring state on startup from storage
+- Handle tab removal events to cleanup intervals
+
+## Monitoring Logic
+
+### Content Extraction
+- Support both `html` and `text` content types
+- Validate content length (minimum 100 characters)
+- Check for loading indicators: `NaN`, `undefined`, `Loading...`
+- Retry extraction if content appears incomplete (max 10 retries, 3s delay)
+
+### Change Detection
+- Use SHA-256 hashing for content comparison
+- Store `lastContentHash` in monitoring config
+- Only send to webhook if hash changed (or change detection disabled)
+- First extraction saves hash but doesn't send (no previous hash to compare)
+
+### Refresh Intervals
+- Minimum refresh interval: 5 seconds (5000ms)
+- Default refresh interval: 30 seconds (30000ms)
+- Store intervals in milliseconds
+- Clear intervals when monitoring stops or tab closes
+
+### Webhook Communication
+- Support per-tab webhook URLs (stored in config)
+- Fallback to global webhook URL if tab-specific not set
+- Payload structure:
+  ```json
+  {
+    "type": "page_monitor",
+    "timestamp": "ISO string",
+    "url": "page URL",
+    "content": "extracted content",
+    "selector": "CSS selector",
+    "changeDetected": boolean,
+    "metadata": {
+      "refreshInterval": number,
+      "tabId": number,
+      "webhookUrl": "string"
+    }
+  }
+  ```
+- Handle network errors gracefully
+- Return success/error status to caller
+
+## UI/UX Patterns
+
+### Popup Interface
+- Show monitoring status with visual indicators (● dot)
+- Update tab list every 2 seconds to show monitoring state
+- Disable start button when monitoring active
+- Show success/error messages with auto-hide (5 seconds)
+- Load saved config when tab selected
+
+### Options Page
+- Save global webhook URL
+- Set monitoring defaults (refresh interval, change detection)
+- Test webhook connectivity
+- Clear stored data
+
+### Profile Management
+- Save monitoring configurations as profiles
+- Profile includes: selector, refreshInterval, contentType, changeDetection, webhookUrl
+- Store profiles in `monitoringProfiles` object
+- Load profiles to populate form fields
+
+## Testing
+
+### Test Structure
+- Tests in `tests/` directory
+- Use Jest with jsdom environment
+- Mock Chrome APIs (`chrome.runtime`, `chrome.storage`, `chrome.tabs`)
+- Test content extraction with JSDOM
+- Test error handling and edge cases
+
+### Test Coverage
+- Content extraction logic
+- CSS selector validation
+- Content validation (loading indicators, length checks)
+- Error handling
+
+## Build & Development
+
+### Scripts
+- `npm run build-config`: Validate extension configuration
+- `npm run package`: Build extension package
+- `npm test`: Run tests
+- `npm run setup-hooks`: Install git hooks
+
+### Git Hooks
+- **pre-commit**: Validate manifest, check code quality
+- **pre-push**: Run tests before pushing
+
+### Build Process
+- Validate `manifest.json`
+- Check file existence
+- Package extension as ZIP for Chrome Web Store
+
+## Best Practices
+
+### Code Quality
+- Write self-documenting code with clear variable names
+- Keep functions focused and single-purpose
+- Extract reusable logic into helper functions
+- Comment complex logic or non-obvious decisions
+
+### Performance
+- Debounce frequent operations (tab list updates)
+- Clear intervals when not needed
+- Use efficient data structures (Map for intervals)
+- Minimize storage operations (batch reads/writes)
+
+### Security & Privacy
+- Never store sensitive data in plain text
+- Validate all user inputs (CSS selectors, URLs)
+- Sanitize content before sending to webhook
+- Handle CORS and network errors gracefully
+
+### User Experience
+- Provide immediate feedback for all actions
+- Show loading states during async operations
+- Display clear error messages
+- Auto-save user preferences
+- Remember last used settings
+
+## Troubleshooting & Fixing
+
+### Troubleshooting Process
+
+When encountering an issue, **ALWAYS** follow this structured approach:
+
+#### Step 1: Take a Deep Breath
+- Pause and avoid rushing to conclusions
+- Clear your mind before starting investigation
+- Approach the problem methodically
+
+#### Step 2: Do Not Jump to Conclusions
+- Avoid making assumptions about the root cause
+- Gather facts before forming hypotheses
+- Question initial impressions and verify them
+
+#### Step 3: Follow Kepner-Tregoe Troubleshooting Methodology
+
+The Kepner-Tregoe method uses a systematic approach:
+
+1. **Problem Analysis**
+   - **What**: What is the problem? Describe it precisely
+   - **Where**: Where does it occur? (Which component, tab, page, etc.)
+   - **When**: When does it occur? (Timing, frequency, triggers)
+   - **Extent**: How widespread is it? (All tabs, specific pages, etc.)
+
+2. **Distinguish Between IS and IS NOT**
+   - **IS**: What is happening? (Actual behavior)
+   - **IS NOT**: What should be happening? (Expected behavior)
+   - **IS**: Where/when does it occur?
+   - **IS NOT**: Where/when does it NOT occur?
+
+3. **Identify Distinctions**
+   - What is different about the cases where it works vs. doesn't work?
+   - What changed recently?
+   - What is unique about the failing scenario?
+
+4. **Test Hypotheses**
+   - Formulate specific, testable hypotheses
+   - Test one hypothesis at a time
+   - Verify or eliminate each hypothesis systematically
+
+5. **Root Cause Analysis**
+   - Identify the most likely cause based on evidence
+   - Verify the root cause can explain all observed symptoms
+   - Confirm the cause is fixable
+
+#### Step 4: Document the Troubleshooting
+
+**ALWAYS** document the troubleshooting process in `docs/troubleshooting/` folder:
+
+- Create a new markdown file: `docs/troubleshooting/YYYY-MM-DD-issue-description.md`
+- Include:
+  - **Issue Description**: Clear problem statement
+  - **Symptoms**: What was observed (IS vs IS NOT)
+  - **Environment**: Chrome version, extension version, affected pages
+  - **Troubleshooting Steps**: Detailed investigation process
+  - **Hypotheses Tested**: What was tried and results
+  - **Root Cause**: Final identified cause
+  - **Evidence**: Logs, screenshots, error messages
+  - **Resolution**: How it was fixed (or if still unresolved)
+
+Example structure:
+```markdown
+# Issue: [Brief Description]
+
+## Date
+YYYY-MM-DD
+
+## Problem Description
+[Detailed description]
+
+## Symptoms
+- IS: [What is happening]
+- IS NOT: [What should happen]
+
+## Environment
+- Chrome Version: 
+- Extension Version:
+- Affected Pages/Components:
+
+## Troubleshooting Steps
+1. [Step 1]
+2. [Step 2]
+...
+
+## Root Cause
+[Identified cause]
+
+## Resolution
+[How it was fixed]
+```
+
+### Fixing Process
+
+When implementing a fix, follow these strict rules:
+
+#### Rule 1: Minimal Changes Only
+- **ONLY** change code directly related to fixing the issue
+- Do NOT refactor unrelated code
+- Do NOT "improve" code that works correctly
+- Do NOT add new features while fixing
+- Keep the diff as small as possible
+
+#### Rule 2: Focus on the Issue
+- Fix **ONLY** the specific problem identified
+- Do NOT fix other issues you notice while working
+- Do NOT optimize code unless it's directly related to the bug
+- Do NOT change code style/formatting unless necessary for the fix
+- Do NOT add comments unless they explain the fix itself
+
+#### Fix Implementation Checklist
+- [ ] Fix addresses the root cause identified in troubleshooting
+- [ ] Changes are minimal and focused
+- [ ] No unrelated code changes
+- [ ] No style/formatting changes unless required
+- [ ] No feature additions
+- [ ] No "improvements" to working code
+- [ ] Fix is tested and verified
+- [ ] Troubleshooting documentation is updated
+
+#### When to Make Additional Changes
+Additional changes are **ONLY** acceptable if:
+- They are **required** to fix the issue (e.g., fixing a dependency)
+- They are **directly related** to the root cause
+- They prevent the same issue from recurring
+- They are **documented** in the troubleshooting file as part of the fix
+
+## Common Patterns
+
+### Tab Management
+```javascript
+// Get active tab
+const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+const activeTab = tabs[0];
+
+// Filter web tabs (exclude chrome://, chrome-extension://)
+const webTabs = tabs.filter(tab => {
+  const url = tab.url || '';
+  return url && !url.startsWith('chrome-extension://') && 
+         !url.startsWith('chrome://') && 
+         (url.startsWith('http://') || url.startsWith('https://'));
+});
+```
+
+### Message Handling
+```javascript
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "someAction") {
+    handleSomeAction(request, sender, sendResponse);
+    return true; // Required for async sendResponse
+  }
+});
+```
+
+### Storage Operations
+```javascript
+// Read
+const result = await chrome.storage.local.get(['key']);
+const value = result.key;
+
+// Write
+await chrome.storage.local.set({ key: value });
+
+// Update nested object
+const result = await chrome.storage.local.get(['objectKey']);
+const obj = result.objectKey || {};
+obj[subKey] = value;
+await chrome.storage.local.set({ objectKey: obj });
+```
+
+### Error Responses
+```javascript
+// Success
+sendResponse({ success: true, message: 'Operation completed' });
+
+// Error
+sendResponse({ success: false, message: 'Error description' });
+```
+
+## Documentation
+
+### Code Comments
+- Use JSDoc for all public functions
+- Include parameter types and descriptions
+- Document return values
+- Add examples for complex functions
+
+### README
+- Keep README.md up to date
+- Document new features
+- Include usage examples
+- Update installation instructions
+
+## Version & Release
+
+### Versioning
+- Follow semantic versioning (MAJOR.MINOR.PATCH)
+- Update version in `manifest.json` and `package.json`
+- Create git tags for releases
+
+### Release Process
+- Update version numbers
+- Update CHANGELOG/RELEASE.md
+- Run tests
+- Build package
+- Create release tag

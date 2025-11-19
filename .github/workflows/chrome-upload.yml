@@ -1,0 +1,102 @@
+name: Chrome Web Store Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to upload (for logging/reference, e.g., 1.0.1)'
+        required: true
+        type: string
+      publish_target:
+        description: 'Publish target (default = public release, trustedTesters = staged rollout)'
+        required: true
+        default: 'default'
+        type: choice
+        options:
+          - default
+          - trustedTesters
+
+jobs:
+  upload:
+    name: Upload ${{ github.event.inputs.version }} to Chrome Web Store
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure Chrome Web Store secrets exist
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          if [ -z "$CHROME_EXTENSION_ID" ] || [ -z "$CHROME_CLIENT_ID" ] || [ -z "$CHROME_CLIENT_SECRET" ] || [ -z "$CHROME_REFRESH_TOKEN" ]; then
+            echo "::error::Missing one or more Chrome Web Store secrets (CHROME_EXTENSION_ID, CHROME_CLIENT_ID, CHROME_CLIENT_SECRET, CHROME_REFRESH_TOKEN)."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate extension
+        run: npm run build-config
+
+      - name: Ensure zip is installed
+        run: |
+          if ! command -v zip &> /dev/null; then
+            echo "Installing zip..."
+            sudo apt-get update && sudo apt-get install -y zip
+          else
+            echo "✅ zip is already installed"
+          fi
+
+      - name: Build package
+        run: npm run package
+
+      - name: Find package file
+        id: pkg
+        run: |
+          FILE=$(ls page-monitor-to-n8n-*.zip | head -1)
+          if [ -z "$FILE" ]; then
+            echo "::error::Package file not found."
+            exit 1
+          fi
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "📦 Using package $FILE"
+
+      - name: Upload to Chrome Web Store
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          PUBLISH_TARGET: ${{ github.event.inputs.publish_target }}
+        run: |
+          PACKAGE_FILE="${{ steps.pkg.outputs.file }}"
+          echo "⬆️ Uploading $PACKAGE_FILE for version ${{ github.event.inputs.version }}..."
+          
+          npx chrome-webstore-upload-cli \
+            --extension-id "$CHROME_EXTENSION_ID" \
+            --client-id "$CHROME_CLIENT_ID" \
+            --client-secret "$CHROME_CLIENT_SECRET" \
+            --refresh-token "$CHROME_REFRESH_TOKEN" \
+            upload --source "$PACKAGE_FILE"
+          
+          echo "📨 Requesting publish to target '$PUBLISH_TARGET' (Google review still applies)..."
+          npx chrome-webstore-upload-cli \
+            --extension-id "$CHROME_EXTENSION_ID" \
+            --client-id "$CHROME_CLIENT_ID" \
+            --client-secret "$CHROME_CLIENT_SECRET" \
+            --refresh-token "$CHROME_REFRESH_TOKEN" \
+            publish --target "$PUBLISH_TARGET"
+

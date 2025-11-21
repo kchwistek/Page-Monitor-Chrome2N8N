@@ -65,6 +65,10 @@ class PageMonitorPopup {
    */
   async loadTabs() {
     try {
+      // Store current selection before refreshing (preserve user's choice)
+      const currentSelection = this.tabSelector.value;
+      const wasUserSelecting = document.activeElement === this.tabSelector;
+      
       const tabs = await chrome.tabs.query({ currentWindow: true });
       const webTabs = tabs.filter(tab => {
         const url = tab.url || '';
@@ -97,12 +101,27 @@ class PageMonitorPopup {
         this.tabSelector.appendChild(option);
       });
       
-      if (sortedTabs.length > 0) {
+      // Restore previous selection if it still exists and user wasn't actively selecting
+      if (currentSelection && !wasUserSelecting) {
+        const optionExists = this.tabSelector.querySelector(`option[value="${currentSelection}"]`);
+        if (optionExists) {
+          this.tabSelector.value = currentSelection;
+          this.currentTabId = parseInt(currentSelection);
+        } else if (sortedTabs.length > 0) {
+          // Selected tab was closed, select first available
+          this.currentTabId = sortedTabs[0].id;
+          this.tabSelector.value = sortedTabs[0].id;
+        }
+      } else if (sortedTabs.length > 0 && !currentSelection) {
+        // No previous selection, select first tab
         this.currentTabId = sortedTabs[0].id;
         this.tabSelector.value = sortedTabs[0].id;
       }
       
-      await this.loadDefaults();
+      // Only load defaults if we don't have a current tab selected
+      if (!this.currentTabId) {
+        await this.loadDefaults();
+      }
     } catch (error) {
       console.error('Error loading tabs:', error);
       this.tabSelector.innerHTML = '<option value="">Error loading tabs</option>';
@@ -174,16 +193,32 @@ class PageMonitorPopup {
     
     this.tabSelector.addEventListener('change', (e) => {
       const tabId = parseInt(e.target.value);
-      if (tabId) {
+      if (tabId && tabId !== this.currentTabId) {
         this.currentTabId = tabId;
+        // Only check status when tab actually changes (not during refresh)
         this.checkMonitoringStatus();
       }
     });
     
     // Refresh tab list periodically to update monitoring indicators
+    // Use longer interval and check if user is interacting to avoid interrupting input
     setInterval(() => {
-      this.loadTabs();
-    }, 2000); // Refresh every 2 seconds
+      // Only refresh if popup has focus and user is not actively interacting with tab selector
+      // Check if any form input has focus (user might be editing)
+      const activeElement = document.activeElement;
+      const isUserInteracting = activeElement === this.tabSelector ||
+                                activeElement === this.selectorInput ||
+                                activeElement === this.refreshIntervalInput ||
+                                activeElement === this.contentTypeSelect ||
+                                activeElement === this.webhookUrlInput ||
+                                activeElement === this.profileSelector ||
+                                activeElement === this.profileNameInput;
+      
+      // Only refresh if user is not interacting and popup has focus
+      if (!isUserInteracting && document.hasFocus()) {
+        this.loadTabs();
+      }
+    }, 5000); // Increased to 5 seconds to reduce interruptions
 
     // Profile management
     this.loadProfileBtn.addEventListener('click', () => this.loadProfile());
@@ -243,11 +278,21 @@ class PageMonitorPopup {
    */
   async updateUIFromStatus(status) {
     if (status.isMonitoring && status.config) {
-      this.selectorInput.value = status.config.selector || '';
-      this.refreshIntervalInput.value = (status.config.refreshInterval / 1000) || 30;
-      this.contentTypeSelect.value = status.config.contentType || 'html';
+      // Only update fields if user is not actively editing them
+      if (document.activeElement !== this.selectorInput) {
+        this.selectorInput.value = status.config.selector || '';
+      }
+      if (document.activeElement !== this.refreshIntervalInput) {
+        this.refreshIntervalInput.value = (status.config.refreshInterval / 1000) || 30;
+      }
+      if (document.activeElement !== this.contentTypeSelect) {
+        this.contentTypeSelect.value = status.config.contentType || 'html';
+      }
+      // Checkbox can be updated (no typing involved)
       this.changeDetectionCheckbox.checked = status.config.changeDetection !== false;
-      this.webhookUrlInput.value = status.config.webhookUrl || '';
+      if (document.activeElement !== this.webhookUrlInput) {
+        this.webhookUrlInput.value = status.config.webhookUrl || '';
+      }
       this.setMonitoringState(true);
       
       // Update profile selector to reflect the active profile

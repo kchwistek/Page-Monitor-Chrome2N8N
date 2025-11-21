@@ -67,6 +67,27 @@
 
       <hr />
 
+      <div class="form-group">
+        <h3><i class="fas fa-bookmark"></i> Profile Management</h3>
+        <p class="help-text">Export all profiles to a JSON file for backup, or import profiles from a file.</p>
+        
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+          <button id="exportProfilesBtn">
+            <i class="fas fa-download"></i>
+            Export Profiles
+          </button>
+          <button id="importProfilesBtn">
+            <i class="fas fa-upload"></i>
+            Import Profiles
+          </button>
+        </div>
+        
+        <input type="file" id="importFileInput" accept=".json" style="display: none;" />
+        <span id="profileStatus"></span>
+      </div>
+
+      <hr />
+
       <div class="info-section">
         <h3><i class="fas fa-shield-alt"></i> How We Protect Your Data</h3>
         <ul>

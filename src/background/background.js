@@ -1,5 +1,8 @@
 console.log('Page Monitor to n8n: Background service worker loaded');
 
+// Import activity log
+importScripts('activity-log.js');
+
 /**
  * Page Monitoring Service
  * Handles automatic page monitoring, refresh, and change detection
@@ -101,6 +104,10 @@ async function restoreMonitoringState() {
         
         // Restore monitoring with current tab ID
         console.log(`Restoring monitoring for tab ${currentTabId} (URL: ${targetUrl})`);
+        activityLog.info('monitoring', 'Monitoring restored after browser restart', {
+          tabId: currentTabId,
+          url: targetUrl
+        });
         await startMonitoring(currentTabId, config);
       } else {
         console.log(`No matching tab found for URL: ${targetUrl}, config not restored`);
@@ -115,12 +122,14 @@ async function restoreMonitoringState() {
 
 // Initialize icon state and restore monitoring on startup
 chrome.runtime.onStartup.addListener(async () => {
+  activityLog.info('system', 'Service worker started');
   await restoreMonitoringState();
   await updateIconState();
 });
 
 // Also restore monitoring and update icon state when extension is installed/enabled
 chrome.runtime.onInstalled.addListener(async () => {
+  activityLog.info('system', 'Extension installed/enabled');
   await restoreMonitoringState();
   await updateIconState();
 });
@@ -293,13 +302,31 @@ async function sendContentToWebhook(tabId, content, url, selector, changeDetecte
 
     if (response.ok) {
       console.log('Content sent to webhook successfully');
+      activityLog.success('webhook', 'Content sent to webhook successfully', {
+        tabId,
+        url: url
+      }, {
+        contentLength: content.length,
+        changeDetected: changeDetected,
+        selector: selector
+      });
       return { success: true, message: 'Content sent successfully' };
     } else {
       console.error('Webhook failed:', response.status);
+      activityLog.error('webhook', 'Webhook request failed', {
+        tabId,
+        url: url,
+        statusCode: response.status
+      });
       return { success: false, message: `Webhook failed (HTTP ${response.status})` };
     }
   } catch (error) {
     console.error('Error sending to webhook:', error);
+    activityLog.error('webhook', 'Network error sending to webhook', {
+      tabId,
+      url: url,
+      error: error.message
+    });
     return { success: false, message: 'Network error: ' + error.message };
   }
 }
@@ -329,9 +356,22 @@ async function processContentExtraction(tabId, data) {
 
     // Send to webhook if changed (or if change detection is disabled)
     if (changed) {
+      activityLog.info('change', 'Content change detected', {
+        tabId,
+        url: url
+      }, {
+        selector: selector,
+        contentLength: content.length
+      });
       await sendContentToWebhook(tabId, content, url, selector, changed);
     } else {
       console.log('Content unchanged, skipping webhook');
+      activityLog.info('change', 'No content change detected, skipping webhook', {
+        tabId,
+        url: url
+      }, {
+        selector: selector
+      });
     }
   } catch (error) {
     console.error('Error processing content extraction:', error);
@@ -347,6 +387,7 @@ async function refreshPage(tabId) {
     const tab = await chrome.tabs.get(tabId);
     if (!tab) {
       console.error('Tab not found:', tabId);
+      activityLog.warning('monitoring', 'Tab not found, stopping monitoring', { tabId });
       stopMonitoring(tabId);
       return;
     }
@@ -354,6 +395,7 @@ async function refreshPage(tabId) {
     const config = await getMonitoringConfig(tabId);
     if (!config || !config.selector) {
       console.error('No monitoring config or selector for tab:', tabId);
+      activityLog.warning('monitoring', 'No monitoring config or selector found', { tabId });
       return;
     }
 
@@ -364,13 +406,31 @@ async function refreshPage(tabId) {
 
       if (normalizedTarget !== normalizedCurrent) {
         console.warn(`Tab ${tabId} navigated away from monitored URL. Stopping monitoring to avoid refreshing unrelated tab.`);
+        activityLog.warning('monitoring', 'Tab navigated away from monitored URL, stopping monitoring', {
+          tabId,
+          originalUrl: targetUrl,
+          currentUrl: tab.url
+        });
         await stopMonitoring(tabId);
         return;
       }
     }
 
+    // Log refresh cycle start
+    activityLog.info('monitoring', 'Starting refresh cycle', {
+      tabId,
+      url: tab.url
+    }, {
+      refreshInterval: config.refreshInterval,
+      selector: config.selector
+    });
+
     // Reload the specific monitored tab only
     await chrome.tabs.reload(tabId);
+    activityLog.info('monitoring', 'Page reloaded', {
+      tabId,
+      url: tab.url
+    });
 
     // Wait for the tab to fully load before attempting extraction
     await waitForTabComplete(tabId, 10000); // Max 10 seconds
@@ -382,6 +442,17 @@ async function refreshPage(tabId) {
 
     const tryExtract = async () => {
       try {
+        // Log extraction attempt
+        if (retries === 0) {
+          activityLog.info('extraction', 'Attempting content extraction after refresh', {
+            tabId,
+            url: tab.url
+          }, {
+            selector: config.selector,
+            contentType: config.contentType
+          });
+        }
+
         const response = await chrome.tabs.sendMessage(tabId, {
           action: 'extractContent',
           selector: config.selector,
@@ -396,6 +467,10 @@ async function refreshPage(tabId) {
 
           if (contentLength < minContentLength) {
             console.log(`Content too short (${contentLength} chars), likely still loading...`);
+            activityLog.info('extraction', `Content too short (${contentLength} chars), likely still loading`, {
+              tabId,
+              contentLength: contentLength
+            });
             throw new Error('Content not fully loaded');
           }
 
@@ -406,9 +481,22 @@ async function refreshPage(tabId) {
             /\bNaN\b/.test(response.content)
           ) {
             console.log('Page still loading (detected loading indicators)');
+            activityLog.info('extraction', 'Page still loading (detected loading indicators)', {
+              tabId
+            });
             throw new Error('Content still loading');
           }
 
+          // Success - reset failure counter and log
+          activityLog.recordSuccess(tabId);
+          activityLog.success('extraction', 'Content extracted successfully after refresh', {
+            tabId,
+            url: tab.url
+          }, {
+            contentLength: contentLength,
+            selector: config.selector,
+            retryCount: retries
+          });
           console.log('Content extraction successful after refresh');
         } else {
           throw new Error(response?.error || 'Extraction failed');
@@ -417,9 +505,45 @@ async function refreshPage(tabId) {
         if (retries < maxRetries) {
           retries++;
           console.log(`Retrying content extraction for tab ${tabId} (${retries}/${maxRetries})...`);
+          activityLog.info('extraction', `Retrying content extraction (${retries}/${maxRetries})`, {
+            tabId,
+            retryCount: retries,
+            error: error.message
+          });
           setTimeout(tryExtract, retryDelay);
         } else {
+          // All retries exhausted - record failure
+          const failureCount = activityLog.recordFailure(tabId);
+          activityLog.error('extraction', 'Content extraction failed after all retries', {
+            tabId,
+            url: tab.url,
+            error: error.message,
+            retryCount: retries,
+            consecutiveFailures: failureCount
+          });
           console.error('Failed to extract content after refresh:', error);
+
+          // Check if failure threshold reached
+          if (activityLog.isFailureThresholdReached(tabId)) {
+            activityLog.warning('monitoring', `Auto-stopping monitoring after ${failureCount} consecutive failures`, {
+              tabId,
+              url: tab.url,
+              consecutiveFailures: failureCount
+            });
+            await stopMonitoring(tabId);
+            
+            // Notify user (optional - requires notifications permission)
+            try {
+              await chrome.notifications.create({
+                type: 'basic',
+                iconUrl: chrome.runtime.getURL('assets/icons/icon48.png'),
+                title: 'Monitoring Stopped',
+                message: `Monitoring stopped for tab ${tabId} after ${failureCount} consecutive failures`
+              });
+            } catch (notifError) {
+              // Notifications permission not granted, ignore
+            }
+          }
         }
       }
     };
@@ -491,12 +615,17 @@ async function ensureContentScriptLoaded(tabId) {
     const tab = await chrome.tabs.get(tabId);
     if (!isValidWebPage(tab.url)) {
       console.warn('Cannot monitor extension pages or special URLs:', tab.url);
+      activityLog.warning('content_script', 'Cannot monitor extension pages or special URLs', {
+        tabId,
+        url: tab.url
+      });
       return false;
     }
 
     // Try to send a ping message to check if content script is loaded
     try {
       await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+      activityLog.success('content_script', 'Content script verified', { tabId, url: tab.url });
       return true;
     } catch (error) {
       if (error.message.includes('Could not establish connection')) {
@@ -508,6 +637,7 @@ async function ensureContentScriptLoaded(tabId) {
             return false;
           }
 
+          activityLog.info('content_script', 'Injecting content script', { tabId, url: tab.url });
           await chrome.scripting.executeScript({
             target: { tabId: tabId },
             files: ['src/content-scripts/page-monitor-content.js']
@@ -521,6 +651,10 @@ async function ensureContentScriptLoaded(tabId) {
           while (pingRetries < maxPingRetries) {
             try {
               await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+              activityLog.success('content_script', 'Content script injected and verified', {
+                tabId,
+                url: tab.url
+              });
               return true;
             } catch (pingError) {
               pingRetries++;
@@ -529,12 +663,23 @@ async function ensureContentScriptLoaded(tabId) {
                 await new Promise(resolve => setTimeout(resolve, 300));
               } else {
                 console.error('Content script still not responding after injection:', pingError);
+                activityLog.error('content_script', 'Content script failed to respond after injection', {
+                  tabId,
+                  url: tab.url,
+                  error: pingError.message,
+                  retries: pingRetries
+                });
                 return false;
               }
             }
           }
         } catch (injectError) {
           console.error('Failed to inject content script:', injectError);
+          activityLog.error('content_script', 'Failed to inject content script', {
+            tabId,
+            url: tab.url,
+            error: injectError.message
+          });
           // Some pages (like chrome://) don't allow script injection
           return false;
         }
@@ -543,6 +688,10 @@ async function ensureContentScriptLoaded(tabId) {
     }
   } catch (error) {
     console.error('Error ensuring content script loaded:', error);
+    activityLog.error('content_script', 'Error ensuring content script loaded', {
+      tabId,
+      error: error.message
+    });
     return false;
   }
 }
@@ -580,10 +729,25 @@ async function startMonitoring(tabId, config) {
     windowId
   });
 
+  // Log monitoring start
+  activityLog.success('monitoring', 'Monitoring started', {
+    tabId,
+    url: resolvedUrl
+  }, {
+    selector: config.selector,
+    refreshInterval: config.refreshInterval,
+    contentType: config.contentType,
+    changeDetection: config.changeDetection
+  });
+
   // Ensure content script is loaded before initial extraction
   const contentScriptLoaded = await ensureContentScriptLoaded(tabId);
   if (!contentScriptLoaded) {
     console.warn(`Content script could not be loaded for tab ${tabId}, initial extraction will be skipped`);
+    activityLog.warning('monitoring', 'Content script could not be loaded, initial extraction skipped', {
+      tabId,
+      url: resolvedUrl
+    });
   }
 
   // Initial content extraction with retry logic (only if content script is loaded)
@@ -598,6 +762,9 @@ async function startMonitoring(tabId, config) {
         const stillLoaded = await ensureContentScriptLoaded(tabId);
         if (!stillLoaded) {
           console.warn(`Content script no longer loaded for tab ${tabId}, skipping initial extraction`);
+          activityLog.warning('extraction', 'Content script no longer loaded, skipping initial extraction', {
+            tabId
+          });
           return;
         }
 
@@ -609,14 +776,30 @@ async function startMonitoring(tabId, config) {
           validateContent: true
         });
         console.log('Initial content extraction request sent successfully');
+        activityLog.success('extraction', 'Initial content extraction request sent', {
+          tabId,
+          url: resolvedUrl
+        }, {
+          selector: config.selector,
+          contentType: config.contentType
+        });
       } catch (error) {
         if (error.message.includes('Could not establish connection') && retries < maxRetries) {
           retries++;
           console.log(`Retrying initial extraction for tab ${tabId} (${retries}/${maxRetries})...`);
+          activityLog.info('extraction', `Retrying initial extraction (${retries}/${maxRetries})`, {
+            tabId,
+            retryCount: retries
+          });
           // Wait a bit longer and try again
           setTimeout(tryInitialExtraction, retryDelay);
         } else {
           console.error('Error sending initial extraction request:', error);
+          activityLog.error('extraction', 'Initial extraction failed after retries', {
+            tabId,
+            error: error.message,
+            retryCount: retries
+          });
         }
       }
     };
@@ -651,6 +834,12 @@ async function stopMonitoring(tabId) {
 
   // Remove configuration
   await removeMonitoringConfig(tabId);
+  
+  // Reset failure counter
+  activityLog.recordSuccess(tabId);
+  
+  // Log monitoring stop
+  activityLog.info('monitoring', 'Monitoring stopped', { tabId });
   
   console.log(`Stopped monitoring tab ${tabId}`);
   
@@ -709,6 +898,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "sendContentNow") {
     console.log('🔵 Background received sendContentNow action');
     handleSendContentNow(request, sender, sendResponse);
+    return true;
+  }
+
+  if (request.action === "getActivityLog") {
+    handleGetActivityLog(request, sender, sendResponse);
+    return true;
+  }
+
+  if (request.action === "clearActivityLog") {
+    handleClearActivityLog(request, sender, sendResponse);
     return true;
   }
 });
@@ -877,9 +1076,86 @@ async function handleSendContentNow(request, sender, sendResponse) {
 }
 
 /**
+ * Handle get activity log request
+ */
+async function handleGetActivityLog(request, sender, sendResponse) {
+  try {
+    const { tabId, level, category, limit } = request;
+    
+    let entries;
+    if (tabId) {
+      entries = activityLog.getByTabId(tabId);
+    } else if (level) {
+      entries = activityLog.getByLevel(level);
+    } else if (category) {
+      entries = activityLog.getByCategory(category);
+    } else if (limit) {
+      entries = activityLog.getRecent(limit);
+    } else {
+      entries = activityLog.getAll();
+    }
+    
+    sendResponse({ success: true, entries });
+  } catch (error) {
+    sendResponse({ success: false, message: error.message });
+  }
+}
+
+/**
+ * Handle clear activity log request
+ */
+async function handleClearActivityLog(request, sender, sendResponse) {
+  try {
+    activityLog.clear();
+    sendResponse({ success: true, message: 'Activity log cleared' });
+  } catch (error) {
+    sendResponse({ success: false, message: error.message });
+  }
+}
+
+/**
+ * Handle get activity log request
+ */
+async function handleGetActivityLog(request, sender, sendResponse) {
+  try {
+    const { tabId, level, category, limit } = request;
+    
+    let entries;
+    if (tabId) {
+      entries = activityLog.getByTabId(tabId);
+    } else if (level) {
+      entries = activityLog.getByLevel(level);
+    } else if (category) {
+      entries = activityLog.getByCategory(category);
+    } else if (limit) {
+      entries = activityLog.getRecent(limit);
+    } else {
+      entries = activityLog.getAll();
+    }
+    
+    sendResponse({ success: true, entries });
+  } catch (error) {
+    sendResponse({ success: false, message: error.message });
+  }
+}
+
+/**
+ * Handle clear activity log request
+ */
+async function handleClearActivityLog(request, sender, sendResponse) {
+  try {
+    activityLog.clear();
+    sendResponse({ success: true, message: 'Activity log cleared' });
+  } catch (error) {
+    sendResponse({ success: false, message: error.message });
+  }
+}
+
+/**
  * Handle tab removal - cleanup monitoring
  */
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  activityLog.info('monitoring', 'Tab closed, stopping monitoring', { tabId });
   await stopMonitoring(tabId);
   await updateIconState();
 });

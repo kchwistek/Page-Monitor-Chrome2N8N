@@ -12,6 +12,11 @@ class PageMonitorPopup {
     this.loadTabs().then(() => {
       this.checkMonitoringStatus();
       this.loadProfiles();
+      this.loadActivityLog();
+      // Auto-refresh log every 2 seconds
+      this.logRefreshInterval = setInterval(() => {
+        this.loadActivityLog();
+      }, 2000);
     });
   }
 
@@ -45,6 +50,13 @@ class PageMonitorPopup {
     
     // Settings icon
     this.settingsIcon = document.getElementById('settingsIcon');
+    
+    // Activity log elements
+    this.logFilter = document.getElementById('logFilter');
+    this.clearLogBtn = document.getElementById('clearLogBtn');
+    this.refreshLogBtn = document.getElementById('refreshLogBtn');
+    this.activityLogEntries = document.getElementById('activityLogEntries');
+    this.logRefreshInterval = null;
   }
 
   /**
@@ -186,6 +198,17 @@ class PageMonitorPopup {
           url: chrome.runtime.getURL('src/options/options.html')
         });
       });
+    }
+    
+    // Activity log controls
+    if (this.logFilter) {
+      this.logFilter.addEventListener('change', () => this.loadActivityLog());
+    }
+    if (this.clearLogBtn) {
+      this.clearLogBtn.addEventListener('click', () => this.clearActivityLog());
+    }
+    if (this.refreshLogBtn) {
+      this.refreshLogBtn.addEventListener('click', () => this.loadActivityLog());
     }
   }
 
@@ -626,6 +649,104 @@ class PageMonitorPopup {
   hideSaveProfileInput() {
     this.saveProfileGroup.style.display = 'none';
     this.profileNameInput.value = '';
+  }
+
+  /**
+   * Load activity log from background script
+   */
+  async loadActivityLog() {
+    try {
+      const filter = this.logFilter ? this.logFilter.value : 'all';
+      let request = { action: 'getActivityLog' };
+      
+      if (filter === 'errors') {
+        request.level = 'error';
+      } else if (filter === 'warnings') {
+        request.level = 'warning';
+      } else if (filter === 'monitoring') {
+        request.category = 'monitoring';
+      } else if (filter === 'extraction') {
+        request.category = 'extraction';
+      } else if (filter === 'webhook') {
+        request.category = 'webhook';
+      } else {
+        request.limit = 20; // Show last 20 entries for "all"
+      }
+      
+      const response = await chrome.runtime.sendMessage(request);
+      
+      if (response && response.success) {
+        this.renderActivityLog(response.entries);
+      }
+    } catch (error) {
+      console.error('Error loading activity log:', error);
+    }
+  }
+
+  /**
+   * Render activity log entries
+   */
+  renderActivityLog(entries) {
+    if (!this.activityLogEntries) return;
+    
+    if (entries.length === 0) {
+      this.activityLogEntries.innerHTML = '<div class="activity-log-empty">No activity yet</div>';
+      return;
+    }
+    
+    this.activityLogEntries.innerHTML = entries.map(entry => {
+      const time = new Date(entry.timestamp).toLocaleTimeString();
+      const details = entry.details && Object.keys(entry.details).length > 0
+        ? `<div class="activity-log-details">${this.formatDetails(entry.details)}</div>`
+        : '';
+      
+      return `
+        <div class="activity-log-entry activity-log-${entry.level}">
+          <div class="activity-log-time">${time}</div>
+          <div class="activity-log-message">
+            <span class="activity-log-category">${entry.category}</span>
+            ${entry.message}
+          </div>
+          ${details}
+        </div>
+      `;
+    }).join('');
+    
+    // Auto-scroll to bottom
+    this.activityLogEntries.scrollTop = this.activityLogEntries.scrollHeight;
+  }
+
+  /**
+   * Format details object for display
+   */
+  formatDetails(details) {
+    const parts = [];
+    if (details.tabId) parts.push(`Tab: ${details.tabId}`);
+    if (details.error) parts.push(`Error: ${details.error}`);
+    if (details.retryCount !== undefined) parts.push(`Retries: ${details.retryCount}`);
+    if (details.consecutiveFailures) parts.push(`Failures: ${details.consecutiveFailures}`);
+    return parts.join(' • ');
+  }
+
+  /**
+   * Clear activity log
+   */
+  async clearActivityLog() {
+    if (!confirm('Clear all activity log entries?')) {
+      return;
+    }
+    
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'clearActivityLog'
+      });
+      
+      if (response && response.success) {
+        this.loadActivityLog();
+      }
+    } catch (error) {
+      console.error('Error clearing activity log:', error);
+    }
   }
 }
 

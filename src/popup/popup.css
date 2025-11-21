@@ -396,6 +396,122 @@ textarea:focus {
   100% { transform: rotate(360deg); }
 }
 
+/* Activity Log Styles */
+.activity-log-section {
+  margin-top: 12px;
+  border-top: 1px solid #ddd;
+  padding-top: 12px;
+}
+
+.activity-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.activity-log-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.activity-log-title i {
+  font-size: 14px;
+  color: #0073b1;
+}
+
+.activity-log-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.activity-log-entries {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #fafafa;
+  padding: 4px;
+}
+
+.activity-log-empty {
+  padding: 16px;
+  text-align: center;
+  color: #999;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.activity-log-entry {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-left: 3px solid #ccc;
+  background: #fff;
+  font-size: 11px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.activity-log-entry:hover {
+  background-color: #f5f5f5;
+}
+
+.activity-log-entry.activity-log-error {
+  border-left-color: #e74c3c;
+  background: #fee;
+}
+
+.activity-log-entry.activity-log-warning {
+  border-left-color: #f39c12;
+  background: #fff8e1;
+}
+
+.activity-log-entry.activity-log-success {
+  border-left-color: #27ae60;
+  background: #e8f5e9;
+}
+
+.activity-log-entry.activity-log-info {
+  border-left-color: #3498db;
+  background: #ebf5fb;
+}
+
+.activity-log-time {
+  font-size: 9px;
+  color: #666;
+  margin-bottom: 2px;
+  font-family: monospace;
+}
+
+.activity-log-message {
+  font-weight: 500;
+  margin-bottom: 2px;
+  color: #333;
+}
+
+.activity-log-details {
+  font-size: 10px;
+  color: #888;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.activity-log-category {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background-color: #e0e0e0;
+  color: #666;
+  margin-right: 4px;
+}
+
 .footer {
   text-align: center;
   font-size: 12px;

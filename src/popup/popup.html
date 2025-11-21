@@ -166,6 +166,35 @@
 
       <!-- Result Message -->
       <div id="resultMessage" class="result-message" style="display: none;"></div>
+
+      <!-- Activity Log Section -->
+      <div class="activity-log-section" id="activityLogSection">
+        <div class="activity-log-header">
+          <div class="activity-log-title">
+            <i class="fas fa-list-alt"></i>
+            <span>Activity Log</span>
+          </div>
+          <div class="activity-log-controls">
+            <select id="logFilter" class="compact-input" style="width: 120px; font-size: 11px;">
+              <option value="all">All</option>
+              <option value="errors">Errors Only</option>
+              <option value="warnings">Warnings</option>
+              <option value="monitoring">Monitoring</option>
+              <option value="extraction">Extraction</option>
+              <option value="webhook">Webhook</option>
+            </select>
+            <button id="clearLogBtn" class="btn-icon" title="Clear Log" style="padding: 4px 8px;">
+              <i class="fas fa-trash"></i>
+            </button>
+            <button id="refreshLogBtn" class="btn-icon" title="Refresh" style="padding: 4px 8px;">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+        </div>
+        <div class="activity-log-entries" id="activityLogEntries">
+          <div class="activity-log-empty">No activity yet</div>
+        </div>
+      </div>
     </div>
 
     <div class="footer">

@@ -70,13 +70,24 @@ jobs:
           fi
       
       - name: Upload to Chrome Web Store (requires secrets)
-        if: ${{ secrets.CHROME_EXTENSION_ID != '' && secrets.CHROME_CLIENT_ID != '' && secrets.CHROME_CLIENT_SECRET != '' && secrets.CHROME_REFRESH_TOKEN != '' }}
+        continue-on-error: true
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
+          # Check if all required secrets are set
+          if [ -z "$CHROME_EXTENSION_ID" ] || [ -z "$CHROME_CLIENT_ID" ] || [ -z "$CHROME_CLIENT_SECRET" ] || [ -z "$CHROME_REFRESH_TOKEN" ]; then
+            echo "⚠️  Chrome Web Store secrets not configured. Skipping upload."
+            echo "   To enable automatic upload, configure the following secrets:"
+            echo "   - CHROME_EXTENSION_ID"
+            echo "   - CHROME_CLIENT_ID"
+            echo "   - CHROME_CLIENT_SECRET"
+            echo "   - CHROME_REFRESH_TOKEN"
+            exit 0
+          fi
+          
           PACKAGE_FILE=$(ls page-monitor-to-n8n-*.zip | head -1)
           echo "⬆️ Uploading $PACKAGE_FILE to Chrome Web Store..."
           

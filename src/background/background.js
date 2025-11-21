@@ -471,6 +471,73 @@ function normalizeUrl(url) {
 }
 
 /**
+ * Check if URL is a valid web page
+ * @param {string} url - URL to check
+ * @returns {boolean} True if valid web page
+ */
+function isValidWebPage(url) {
+  if (!url) return false;
+  return url.startsWith('http://') || url.startsWith('https://');
+}
+
+/**
+ * Ensure content script is loaded, inject if necessary
+ * @param {number} tabId - Tab ID
+ * @returns {Promise<boolean>} True if content script is loaded
+ */
+async function ensureContentScriptLoaded(tabId) {
+  try {
+    // Get tab info to check if it's a valid web page
+    const tab = await chrome.tabs.get(tabId);
+    if (!isValidWebPage(tab.url)) {
+      console.warn('Cannot monitor extension pages or special URLs:', tab.url);
+      return false;
+    }
+
+    // Try to send a ping message to check if content script is loaded
+    try {
+      await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+      return true;
+    } catch (error) {
+      if (error.message.includes('Could not establish connection')) {
+        // Content script not loaded, try to inject it
+        try {
+          // Double-check it's a valid web page before injecting
+          const tab = await chrome.tabs.get(tabId);
+          if (!isValidWebPage(tab.url)) {
+            return false;
+          }
+
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['src/content-scripts/page-monitor-content.js']
+          });
+          // Wait a bit for script to initialize, then verify it's loaded
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Retry ping to verify injection was successful
+          try {
+            await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+            return true;
+          } catch (retryError) {
+            console.error('Content script still not responding after injection:', retryError);
+            return false;
+          }
+        } catch (injectError) {
+          console.error('Failed to inject content script:', injectError);
+          // Some pages (like chrome://) don't allow script injection
+          return false;
+        }
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error ensuring content script loaded:', error);
+    return false;
+  }
+}
+
+/**
  * Start monitoring a tab
  * @param {number} tabId - Tab ID
  * @param {Object} config - Monitoring configuration
@@ -503,17 +570,25 @@ async function startMonitoring(tabId, config) {
     windowId
   });
 
-  // Initial content extraction
-  try {
-    await chrome.tabs.sendMessage(tabId, {
-      action: 'extractContent',
-      selector: config.selector,
-      contentType: config.contentType || 'html',
-      tabId,
-      validateContent: true
-    });
-  } catch (error) {
-    console.error('Error sending initial extraction request:', error);
+  // Ensure content script is loaded before initial extraction
+  const contentScriptLoaded = await ensureContentScriptLoaded(tabId);
+  if (!contentScriptLoaded) {
+    console.warn(`Content script could not be loaded for tab ${tabId}, initial extraction will be skipped`);
+  }
+
+  // Initial content extraction (only if content script is loaded)
+  if (contentScriptLoaded) {
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        action: 'extractContent',
+        selector: config.selector,
+        contentType: config.contentType || 'html',
+        tabId,
+        validateContent: true
+      });
+    } catch (error) {
+      console.error('Error sending initial extraction request:', error);
+    }
   }
 
   // Set up refresh interval

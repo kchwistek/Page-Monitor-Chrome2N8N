@@ -226,7 +226,7 @@ class PageMonitorPopup {
 
       if (response && response.success) {
         this.isMonitoring = response.isMonitoring;
-        this.updateUIFromStatus(response);
+        await this.updateUIFromStatus(response);
       }
     } catch (error) {
       console.error('Error checking monitoring status:', error);
@@ -236,7 +236,7 @@ class PageMonitorPopup {
   /**
    * Update UI from status
    */
-  updateUIFromStatus(status) {
+  async updateUIFromStatus(status) {
     if (status.isMonitoring && status.config) {
       this.selectorInput.value = status.config.selector || '';
       this.refreshIntervalInput.value = (status.config.refreshInterval / 1000) || 30;
@@ -244,8 +244,40 @@ class PageMonitorPopup {
       this.changeDetectionCheckbox.checked = status.config.changeDetection !== false;
       this.webhookUrlInput.value = status.config.webhookUrl || '';
       this.setMonitoringState(true);
+      
+      // Update profile selector to reflect the active profile
+      await this.updateProfileSelectorFromConfig(status.config);
     } else {
       this.setMonitoringState(false);
+      // Clear profile selector when not monitoring
+      this.profileSelector.value = '';
+    }
+  }
+
+  /**
+   * Update profile selector based on configuration
+   * @param {Object} config - Configuration object
+   */
+  async updateProfileSelectorFromConfig(config) {
+    // First check if config has a profileName property
+    if (config.profileName) {
+      // Ensure profiles are loaded
+      await this.loadProfiles();
+      // Set the selector to the profile name if it exists
+      if (this.profileSelector.querySelector(`option[value="${config.profileName}"]`)) {
+        this.profileSelector.value = config.profileName;
+        return;
+      }
+    }
+    
+    // If no profileName in config, try to match the config to a profile
+    const matchedProfile = await this.matchConfigToProfile(config);
+    if (matchedProfile) {
+      // Ensure profiles are loaded
+      await this.loadProfiles();
+      if (this.profileSelector.querySelector(`option[value="${matchedProfile}"]`)) {
+        this.profileSelector.value = matchedProfile;
+      }
     }
   }
 
@@ -297,6 +329,9 @@ class PageMonitorPopup {
 
       const webhookUrl = this.webhookUrlInput.value.trim();
       
+      // Include profile name if a profile is selected
+      const selectedProfileName = this.profileSelector.value || null;
+      
       const response = await chrome.runtime.sendMessage({
         action: 'startMonitoring',
         tabId: this.currentTabId,
@@ -306,7 +341,8 @@ class PageMonitorPopup {
           contentType: this.contentTypeSelect.value || 'html',
           changeDetection: this.changeDetectionCheckbox.checked,
           webhookUrl: webhookUrl || null, // null means use global webhook
-          url: tab.url
+          url: tab.url,
+          profileName: selectedProfileName // Store profile name in config
         }
       });
 
@@ -543,6 +579,34 @@ class PageMonitorPopup {
     if (config.changeDetection !== undefined) this.changeDetectionCheckbox.checked = config.changeDetection;
     if (config.contentType) this.contentTypeSelect.value = config.contentType;
     if (config.webhookUrl !== undefined) this.webhookUrlInput.value = config.webhookUrl || '';
+    // Note: profileName is handled separately in updateUIFromStatus
+  }
+
+  /**
+   * Match current configuration to a saved profile
+   * @returns {Promise<string|null>} Profile name if match found, null otherwise
+   */
+  async matchConfigToProfile(config) {
+    try {
+      const result = await chrome.storage.local.get(['monitoringProfiles']);
+      const profiles = result.monitoringProfiles || {};
+      
+      // Compare config with each profile
+      for (const [profileName, profile] of Object.entries(profiles)) {
+        // Compare relevant fields (excluding metadata like savedAt)
+        if (profile.selector === config.selector &&
+            profile.refreshInterval === config.refreshInterval &&
+            profile.changeDetection === config.changeDetection &&
+            profile.contentType === config.contentType &&
+            (profile.webhookUrl || null) === (config.webhookUrl || null)) {
+          return profileName;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error matching config to profile:', error);
+      return null;
+    }
   }
 
   /**
@@ -627,6 +691,7 @@ class PageMonitorPopup {
       }
 
       this.applyConfig(profile);
+      // Profile selector is already set to the selected profile, so no need to update it
       this.showResult(`✅ Profile "${profileName}" loaded!`, true);
     } catch (error) {
       console.error('Error loading profile:', error);

@@ -939,6 +939,11 @@ async function handleStartMonitoring(request, sender, sendResponse) {
     if (configData.webhookUrl && typeof configData.webhookUrl === 'string' && configData.webhookUrl.trim()) {
       config.webhookUrl = configData.webhookUrl.trim();
     }
+    
+    // Include profileName if provided (for tracking which profile is active)
+    if (configData.profileName && typeof configData.profileName === 'string' && configData.profileName.trim()) {
+      config.profileName = configData.profileName.trim();
+    }
 
     await startMonitoring(tabId, config);
     sendResponse({ success: true, message: 'Monitoring started' });

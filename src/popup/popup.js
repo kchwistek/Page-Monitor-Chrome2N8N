@@ -43,6 +43,7 @@ class PageMonitorPopup {
     this.profileSelector = document.getElementById('profileSelector');
     this.loadProfileBtn = document.getElementById('loadProfileBtn');
     this.saveProfileBtn = document.getElementById('saveProfileBtn');
+    this.saveAsProfileBtn = document.getElementById('saveAsProfileBtn');
     this.saveProfileGroup = document.getElementById('saveProfileGroup');
     this.profileNameInput = document.getElementById('profileNameInput');
     this.confirmSaveBtn = document.getElementById('confirmSaveBtn');
@@ -186,9 +187,13 @@ class PageMonitorPopup {
 
     // Profile management
     this.loadProfileBtn.addEventListener('click', () => this.loadProfile());
-    this.saveProfileBtn.addEventListener('click', () => this.showSaveProfileInput());
-    this.confirmSaveBtn.addEventListener('click', () => this.saveProfile());
+    this.saveProfileBtn.addEventListener('click', () => this.saveProfile());
+    this.saveAsProfileBtn.addEventListener('click', () => this.showSaveProfileInput());
+    this.confirmSaveBtn.addEventListener('click', () => this.saveProfileAs());
     this.cancelSaveBtn.addEventListener('click', () => this.hideSaveProfileInput());
+    
+    // Update Save button state when profile selection changes
+    this.profileSelector.addEventListener('change', () => this.updateSaveButtonState());
     
     // Settings icon
     if (this.settingsIcon) {
@@ -625,15 +630,78 @@ class PageMonitorPopup {
         option.textContent = profileName;
         this.profileSelector.appendChild(option);
       });
+      
+      // Update Save button state after loading profiles
+      this.updateSaveButtonState();
     } catch (error) {
       console.error('Error loading profiles:', error);
     }
   }
 
   /**
-   * Save profile
+   * Update Save button state based on profile selection
+   */
+  updateSaveButtonState() {
+    const profileName = this.profileSelector.value;
+    if (this.saveProfileBtn) {
+      this.saveProfileBtn.disabled = !profileName;
+      if (!profileName) {
+        this.saveProfileBtn.title = 'Select a profile to save';
+      } else {
+        this.saveProfileBtn.title = `Save to "${profileName}"`;
+      }
+    }
+  }
+
+  /**
+   * Save profile to currently selected profile
    */
   async saveProfile() {
+    const profileName = this.profileSelector.value;
+    
+    if (!profileName) {
+      this.showResult('Please select a profile to save, or use "Save As" to create a new profile', false);
+      return;
+    }
+
+    try {
+      const result = await chrome.storage.local.get(['monitoringProfiles']);
+      const profiles = result.monitoringProfiles || {};
+      
+      // Check if profile exists
+      if (!profiles[profileName]) {
+        this.showResult('Selected profile not found. Use "Save As" to create a new profile.', false);
+        return;
+      }
+      
+      const config = this.getCurrentConfig();
+      
+      if (!config.selector) {
+        this.showResult('Please enter a CSS selector before saving', false);
+        return;
+      }
+
+      // Save to the selected profile
+      profiles[profileName] = {
+        ...config,
+        savedAt: new Date().toISOString()
+      };
+
+      await chrome.storage.local.set({ monitoringProfiles: profiles });
+      
+      this.showResult(`✅ Profile "${profileName}" saved!`, true);
+      await this.loadProfiles();
+      this.profileSelector.value = profileName;
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      this.showResult('❌ Failed to save profile: ' + error.message, false);
+    }
+  }
+
+  /**
+   * Save profile as new profile (Save As)
+   */
+  async saveProfileAs() {
     const profileName = this.profileNameInput.value.trim();
     
     if (!profileName) {
@@ -652,6 +720,14 @@ class PageMonitorPopup {
         return;
       }
 
+      // Check if profile already exists and ask for confirmation
+      if (profiles[profileName]) {
+        const overwrite = confirm(`Profile "${profileName}" already exists. Overwrite?`);
+        if (!overwrite) {
+          return;
+        }
+      }
+
       profiles[profileName] = {
         ...config,
         savedAt: new Date().toISOString()
@@ -663,6 +739,7 @@ class PageMonitorPopup {
       this.hideSaveProfileInput();
       await this.loadProfiles();
       this.profileSelector.value = profileName;
+      this.updateSaveButtonState();
     } catch (error) {
       console.error('Error saving profile:', error);
       this.showResult('❌ Failed to save profile: ' + error.message, false);
@@ -692,6 +769,7 @@ class PageMonitorPopup {
 
       this.applyConfig(profile);
       // Profile selector is already set to the selected profile, so no need to update it
+      this.updateSaveButtonState();
       this.showResult(`✅ Profile "${profileName}" loaded!`, true);
     } catch (error) {
       console.error('Error loading profile:', error);

@@ -29,10 +29,17 @@ The `startMonitoring()` function in `src/background/background.js` immediately t
    - Verifies injection was successful by pinging again
    - Returns `true` if content script is ready, `false` otherwise
 
-3. **Updated `startMonitoring()` function** (lines 573-592):
+3. **Updated `startMonitoring()` function** (lines 583-620):
    - Calls `ensureContentScriptLoaded()` before attempting initial extraction
    - Only sends extraction message if content script is successfully loaded
    - Logs a warning if content script couldn't be loaded (monitoring still starts, may work on refresh)
+   - **Added retry logic** (up to 5 retries) for initial extraction to handle race conditions
+   - Re-verifies content script is loaded before each retry attempt
+
+4. **Enhanced `ensureContentScriptLoaded()` function** (Additional fix):
+   - Increased wait time after injection from 200ms to 500ms
+   - Added retry logic for ping verification (up to 3 retries with 300ms delays)
+   - More robust verification that content script is fully initialized
 
 ### Key Features
 
@@ -50,9 +57,20 @@ The `startMonitoring()` function in `src/background/background.js` immediately t
    - Validates tab URL is a web page
    - Sends ping message to check if content script is loaded
    - If connection fails, injects content script dynamically
-   - Waits for initialization and verifies with another ping
-4. If content script is loaded, sends initial extraction message
+   - Waits 500ms for initialization (increased from 200ms)
+   - Verifies with ping (with retry logic - up to 3 attempts)
+4. If content script is loaded, attempts initial extraction with retry logic:
+   - Waits 300ms before first attempt
+   - Re-verifies content script is loaded before each retry
+   - Retries up to 5 times with 500ms delays if connection error occurs
 5. Sets up refresh interval (monitoring continues regardless of initial extraction success)
+
+## Additional Fixes (After Initial Implementation)
+
+The initial fix resolved most cases, but race conditions could still cause errors:
+- **Problem**: Ping could succeed but `extractContent` message could still fail
+- **Solution**: Added retry logic with re-verification before each attempt
+- **Result**: More robust handling of timing issues and race conditions
 
 ## Files Modified
 - `src/background/background.js` - Added content script verification and injection logic
@@ -62,9 +80,10 @@ The `startMonitoring()` function in `src/background/background.js` immediately t
 After reloading the extension:
 - ✅ No more "Could not establish connection" errors when starting monitoring
 - ✅ Content script is automatically injected if not already loaded
-- ✅ Initial extraction works correctly when content script is ready
+- ✅ Initial extraction works correctly with retry logic handling race conditions
 - ✅ Monitoring starts successfully even if initial extraction is skipped
 - ✅ Pattern matches popup and monitor page implementations
+- ✅ Retry mechanism handles timing issues and ensures content script is fully ready
 
 ## Status
 ✅ **RESOLVED** - Content script connection errors are now prevented by ensuring the script is loaded before communication.

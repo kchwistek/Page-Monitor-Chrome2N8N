@@ -139,6 +139,17 @@ The popup and monitor pages already have `ensureContentScriptLoaded()` functions
    - Only sends extraction message if content script is loaded
    - Logs warning if content script couldn't be loaded (monitoring still starts)
 
+3. **Enhanced `ensureContentScriptLoaded()` function** (Additional fix):
+   - Increased wait time after injection from 200ms to 500ms
+   - Added retry logic for ping verification (up to 3 retries with 300ms delays)
+   - More robust verification that content script is fully initialized
+
+4. **Added retry logic to initial extraction** (Additional fix):
+   - Retries up to 5 times if connection error occurs
+   - Re-verifies content script is loaded before each retry attempt
+   - 500ms delay between retries
+   - 300ms initial delay before first attempt to ensure content script is ready
+
 ### Implementation Details
 
 ```473:592:src/background/background.js
@@ -164,12 +175,20 @@ async function ensureContentScriptLoaded(tabId) {
 // Updated startMonitoring() to use ensureContentScriptLoaded()
 ```
 
+### Additional Fixes Applied
+
+After initial fix, the error persisted due to race conditions:
+- **Issue**: Even though ping succeeded, `extractContent` message could still fail
+- **Root Cause**: Content script message listeners might not be fully initialized when ping works
+- **Solution**: Added retry logic with re-verification before each attempt
+
 ### Testing
 - ✅ No more connection errors when starting monitoring
 - ✅ Content script is automatically injected if missing
-- ✅ Initial extraction works correctly
+- ✅ Initial extraction works correctly with retry logic
 - ✅ Monitoring starts successfully even if initial extraction is skipped
 - ✅ Pattern matches popup and monitor page implementations
+- ✅ Retry mechanism handles race conditions and timing issues
 
 ## Prevention
 - Always verify content script is loaded before sending messages

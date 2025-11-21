@@ -512,16 +512,26 @@ async function ensureContentScriptLoaded(tabId) {
             target: { tabId: tabId },
             files: ['src/content-scripts/page-monitor-content.js']
           });
-          // Wait a bit for script to initialize, then verify it's loaded
-          await new Promise(resolve => setTimeout(resolve, 200));
+          // Wait longer for script to initialize and set up message listeners
+          await new Promise(resolve => setTimeout(resolve, 500));
           
-          // Retry ping to verify injection was successful
-          try {
-            await chrome.tabs.sendMessage(tabId, { action: 'ping' });
-            return true;
-          } catch (retryError) {
-            console.error('Content script still not responding after injection:', retryError);
-            return false;
+          // Retry ping to verify injection was successful (with retries)
+          let pingRetries = 0;
+          const maxPingRetries = 3;
+          while (pingRetries < maxPingRetries) {
+            try {
+              await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+              return true;
+            } catch (pingError) {
+              pingRetries++;
+              if (pingRetries < maxPingRetries) {
+                console.log(`Ping failed, retrying (${pingRetries}/${maxPingRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, 300));
+              } else {
+                console.error('Content script still not responding after injection:', pingError);
+                return false;
+              }
+            }
           }
         } catch (injectError) {
           console.error('Failed to inject content script:', injectError);
@@ -576,19 +586,43 @@ async function startMonitoring(tabId, config) {
     console.warn(`Content script could not be loaded for tab ${tabId}, initial extraction will be skipped`);
   }
 
-  // Initial content extraction (only if content script is loaded)
+  // Initial content extraction with retry logic (only if content script is loaded)
   if (contentScriptLoaded) {
-    try {
-      await chrome.tabs.sendMessage(tabId, {
-        action: 'extractContent',
-        selector: config.selector,
-        contentType: config.contentType || 'html',
-        tabId,
-        validateContent: true
-      });
-    } catch (error) {
-      console.error('Error sending initial extraction request:', error);
-    }
+    let retries = 0;
+    const maxRetries = 5;
+    const retryDelay = 500; // 500ms between retries
+
+    const tryInitialExtraction = async () => {
+      try {
+        // Re-verify content script is loaded before each attempt
+        const stillLoaded = await ensureContentScriptLoaded(tabId);
+        if (!stillLoaded) {
+          console.warn(`Content script no longer loaded for tab ${tabId}, skipping initial extraction`);
+          return;
+        }
+
+        await chrome.tabs.sendMessage(tabId, {
+          action: 'extractContent',
+          selector: config.selector,
+          contentType: config.contentType || 'html',
+          tabId,
+          validateContent: true
+        });
+        console.log('Initial content extraction request sent successfully');
+      } catch (error) {
+        if (error.message.includes('Could not establish connection') && retries < maxRetries) {
+          retries++;
+          console.log(`Retrying initial extraction for tab ${tabId} (${retries}/${maxRetries})...`);
+          // Wait a bit longer and try again
+          setTimeout(tryInitialExtraction, retryDelay);
+        } else {
+          console.error('Error sending initial extraction request:', error);
+        }
+      }
+    };
+
+    // Start initial extraction attempt after a short delay to ensure content script is fully ready
+    setTimeout(tryInitialExtraction, 300);
   }
 
   // Set up refresh interval

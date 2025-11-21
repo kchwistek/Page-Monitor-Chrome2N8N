@@ -23,38 +23,31 @@ fi
 # Create .git/hooks directory if it doesn't exist
 mkdir -p .git/hooks
 
-# Copy hooks if they don't exist
-if [ ! -f ".git/hooks/pre-commit" ]; then
-    echo "📝 Creating pre-commit hook..."
-    cat > .git/hooks/pre-commit << 'EOF'
+# Install/update pre-commit hook
+echo "📝 Installing/updating pre-commit hook..."
+cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/bash
 # Pre-commit hook - see scripts/hooks/pre-commit for source
 EOF
-    cat scripts/hooks/pre-commit >> .git/hooks/pre-commit 2>/dev/null || {
-        echo "   Using default pre-commit hook"
-        # Default hook content will be added
-    }
-    chmod +x .git/hooks/pre-commit
-    echo -e "${GREEN}✅ Pre-commit hook installed${NC}"
-else
-    echo -e "${YELLOW}⚠️  Pre-commit hook already exists${NC}"
-fi
+cat scripts/hooks/pre-commit >> .git/hooks/pre-commit 2>/dev/null || {
+    echo "   Error: Could not read scripts/hooks/pre-commit"
+    exit 1
+}
+chmod +x .git/hooks/pre-commit
+echo -e "${GREEN}✅ Pre-commit hook installed${NC}"
 
-if [ ! -f ".git/hooks/pre-push" ]; then
-    echo "📝 Creating pre-push hook..."
-    cat > .git/hooks/pre-push << 'EOF'
+# Install/update pre-push hook
+echo "📝 Installing/updating pre-push hook..."
+cat > .git/hooks/pre-push << 'EOF'
 #!/bin/bash
 # Pre-push hook - see scripts/hooks/pre-push for source
 EOF
-    cat scripts/hooks/pre-push >> .git/hooks/pre-push 2>/dev/null || {
-        echo "   Using default pre-push hook"
-        # Default hook content will be added
-    }
-    chmod +x .git/hooks/pre-push
-    echo -e "${GREEN}✅ Pre-push hook installed${NC}"
-else
-    echo -e "${YELLOW}⚠️  Pre-push hook already exists${NC}"
-fi
+cat scripts/hooks/pre-push >> .git/hooks/pre-push 2>/dev/null || {
+    echo "   Error: Could not read scripts/hooks/pre-push"
+    exit 1
+}
+chmod +x .git/hooks/pre-push
+echo -e "${GREEN}✅ Pre-push hook installed${NC}"
 
 echo ""
 echo -e "${GREEN}✅ Git hooks setup complete!${NC}"

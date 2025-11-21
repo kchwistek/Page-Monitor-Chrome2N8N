@@ -1,6 +1,6 @@
 {
   "name": "page-monitor-to-n8n",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A Chrome extension that monitors web pages and sends content changes to n8n automation workflows",
   "main": "src/popup/popup.js",
   "scripts": {
